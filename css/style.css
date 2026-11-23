@@ -238,3 +238,17 @@ details.orig summary { cursor: pointer; color: var(--muted); font-size: 14px; pa
   .guide-side { position: static; order: -1; }
   .picks { max-height: 160px; }
 }
+.findings ul { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.approaches { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 10px; }
+.approach { text-align: left; background: var(--bg); border: 2px solid var(--line); border-radius: 12px; padding: 12px 14px; cursor: pointer; color: var(--ink); font: inherit; display: grid; gap: 6px; align-content: start; }
+.approach[aria-pressed=true] { border-color: var(--accent); background: var(--bg2); }
+.ap-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.ap-top b { font-family: "IM Fell English", serif; font-weight: 400; font-size: 21px; line-height: 1.15; }
+.ap-plan { font-size: 14.5px; color: var(--muted); }
+.ap-grades { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.ap-grades small { color: var(--muted); margin-left: 6px; }
+.pip { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.pip.strong { background: var(--strong); } .pip.ok { background: var(--ok); } .pip.thin { background: var(--thin); } .pip.missing { background: var(--missing); }
+.claude { margin-top: 16px; border-left: 4px solid var(--accent); }
+.brief { max-height: 260px; overflow: auto; white-space: pre-wrap; font-size: 12.5px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+#claude-plan { min-height: 120px; }

@@ -3,6 +3,7 @@
 Two tools for Arkham Horror: The Card Game:
 
 - **Build a deck**: tick the products you own (every Chapter One and Chapter Two release, standalone scenarios, parallels, novellas and promos), choose an investigator or a role, then let it build a full level-0 deck or walk you through picking cards step by step with a live checkup.
+  It also asks what you're playing (any campaign, Return to box or standalone scenario), reads that campaign's encounter cards to see what it throws at you, and offers several decks built around different plans. There's an "outside the box" setting, and Claude can add its own ideas through Claude in Chrome or the Claude app.
 - **Check a deck**: paste a deck (or an ArkhamDB link) and see what it does well, where it's thin, and what to fix first.
 
 ## What it checks
@@ -35,6 +36,9 @@ node scripts/build-cards.mjs ../arkhamdb-json-data
 - `js/analyze.js`: all grading, odds and rules checks. It has no UI code, so the planned **guided builder** and **upgrade planner** can reuse it.
 - `js/build.js`: collection handling, card scoring, auto-build and the walk-through steps.
 - `js/builder-ui.js`: the Build a deck screens.
+- `js/campaign.js`: campaign and scenario profiles (from `data/campaigns.json`) turned into findings and deck targets.
+- `js/engines.js`: deck themes (Tomes, Spells, evade, bless…) and which ones your collection supports.
+- `js/claude.js`: the brief for Claude and the parser for its reply.
 - `js/app.js`: the Check a deck screen, card previews and page routing.
 - `js/sample.js`: the sample deck shown on first visit.
 

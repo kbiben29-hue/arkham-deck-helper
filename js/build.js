@@ -1,6 +1,8 @@
 // Deck builder engine: works out which cards you own, scores them for an investigator
 // and role, and builds a deck automatically or suggests cards one step at a time.
 import { cardRoles, deckOptions, placeCard, analyze, ROLES } from './analyze.js';
+import { adjustTargets } from './campaign.js';
+import { viableEngines, seeded } from './engines.js';
 
 // Cards most players reach for at level 0. A light nudge, not a must-include list.
 const STAPLES = new Set([
@@ -158,7 +160,26 @@ export function scoreCard(card, ctx) {
   const roles = cardRoles(card);
   const buckets = bucketsOf(roles);
   let s = 0.5;
-  if (STAPLES.has(card.name)) { s += 2.2; reasons.push('A popular pick'); }
+  const spice = ctx.spice ?? 0;
+  if (STAPLES.has(card.name)) {
+    const bonus = [2.2, 0.8, -0.9][spice];
+    s += bonus;
+    if (bonus > 0) reasons.push('A popular pick');
+  }
+  if (ctx.engine && ctx.engine.match(card)) { s += 3; reasons.push(`Fits the ${ctx.engine.name} plan`); }
+  if (ctx.keyTraits?.size && (card.traits || '').toLowerCase().split('.').some(t => ctx.keyTraits.has(t.trim()))) s += 0.8;
+  if (ctx.jitter) s += (ctx.jitter.get(identity(card)) || 0) * (0.3 + spice * 1.1);
+  const pr = ctx.pr || {};
+  const t0 = plain(card.text);
+  if (pr.willpower > 0.1 && (roles.has('boost_w') || roles.has('cancel'))) { s += 0.9; reasons.push("Helps with this campaign's willpower tests"); }
+  if (pr.agility > 0.06 && (roles.has('boost_a') || roles.has('evade'))) s += 0.5;
+  if (pr.tough > 0.3 && roles.has('fight') && /\+\d damage|deals \+\d|deal (2|3|4) damage/.test(t0)) { s += 0.9; reasons.push('Extra damage for tough enemies'); }
+  if (pr.tough > 0.3 && roles.has('evade')) s += 0.4;
+  if (pr.hunters > 0.1 && (roles.has('fight') || roles.has('evade'))) s += 0.3;
+  if (pr.shroud > 0.25 && roles.has('clue') && (roles.has('boost_i') || /without (making a|testing)|discover \d+ clues? at (your|a) location\./.test(t0))) { s += 0.8; reasons.push('Gets around high shroud'); }
+  if (pr.horror > 0.05 && (card.sanity > 0 || /hh/.test(card.tags || ''))) { s += 0.7; reasons.push('Soaks or heals horror'); }
+  if (pr.horror < -0.06 && (card.health > 0 || /hd/.test(card.tags || ''))) { s += 0.7; reasons.push('Soaks or heals damage'); }
+  if (pr.curse && /\[bless\]/.test(t0)) s += 0.6;
 
   const primary = ctx.role === 'clues' ? 'clue' : ctx.role === 'fighter' ? 'enemy' : null;
   const sorted = buckets.map(b => {
@@ -205,16 +226,17 @@ export function scoreCard(card, ctx) {
   }
   if (!buckets.length && card.type !== 'skill' && !STAPLES.has(card.name)) s -= 0.6;
   if (card.type === 'skill' && (ctx.skills || 0) >= ctx.skillCap) s -= 2.5 + (ctx.skills - ctx.skillCap) * 0.5;
-  return { score: s, reasons: reasons.slice(0, 3), buckets };
+  return { score: s, reasons: [...new Set(reasons)].slice(0, 3), buckets };
 }
 
 // --- Building ---------------------------------------------------------------
 export class Builder {
-  constructor(db, { inv, owned, role, players, choices = {}, xp = 0 }) {
+  constructor(db, { inv, owned, role, players, choices = {}, xp = 0, pr = null, engine = null, spice = 0, seed = 1, keyNames = [], avoidNames = [] }) {
     this.db = db; this.inv = inv; this.players = players; this.choices = choices;
+    this.pr = pr; this.engine = engine; this.spice = spice;
     this.role = role === 'auto' || !role ? autoRole(inv) : role;
     this.size = deckSizeFor(inv, choices);
-    this.targets = targetsFor(this.role, players, this.size, inv);
+    this.targets = adjustTargets(targetsFor(this.role, players, this.size, inv), pr);
     this.synergy = invTraits(inv);
     this.opts = deckOptions(inv, choices);
     this.required = requiredCards(db, inv);
@@ -230,7 +252,22 @@ export class Builder {
       const max = Math.min(copies, card.limit ?? 2, card.myriad ? 3 : 2);
       this.pool.push({ card, max, print });
     }
+    // Avoid list and per-card randomness for variety
+    const norm = n => n.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const avoid = new Set(avoidNames.map(norm));
+    this.pool = this.pool.filter(p => !avoid.has(norm(p.card.name)));
+    const rand = seeded(seed);
+    this.jitter = new Map(this.pool.map(p => [identity(p.card), rand() - 0.5]));
     this.picks = new Map(); // identity -> { card, count }
+    // Key cards (from an approach or from Claude) go in first
+    this.missingKeys = [];
+    this.keyTraits = new Set();
+    for (const name of keyNames) {
+      const p = this.pool.find(x => norm(x.card.name) === norm(name)) || this.pool.find(x => norm(x.card.name).startsWith(norm(name)));
+      if (!p) { this.missingKeys.push(name); continue; }
+      if (this.counted < this.size) { let n = Math.min(p.max, 2); while (n > 0 && !this.set(p.card, n)) n--; }
+      for (const t of (p.card.traits || '').toLowerCase().split('.').map(x => x.trim()).filter(Boolean)) if (!['item', 'ally', 'talent', 'insight'].includes(t)) this.keyTraits.add(t);
+    }
   }
 
   get counted() { let n = 0; for (const p of this.picks.values()) n += p.count; return n; }
@@ -246,7 +283,7 @@ export class Builder {
         slotUse[name] = (slotUse[name] || 0) + count * (mult ? +mult : 1);
       }
     }
-    return { inv: this.inv, role: this.role, targets: this.targets, counts, slotUse, synergy: this.synergy, skills, skillCap: Math.round(this.size * 0.2) };
+    return { inv: this.inv, role: this.role, targets: this.targets, counts, slotUse, synergy: this.synergy, skills, skillCap: Math.round(this.size * 0.2), engine: this.engine, spice: this.spice, jitter: this.jitter, pr: this.pr || {}, keyTraits: this.keyTraits };
   }
 
   // Can `count` more copies of card go in without breaking a limited rule?
@@ -311,6 +348,34 @@ export class Builder {
       sigs.length ? `Signature cards\n${sigs.join('\n')}` : '',
       `Weaknesses\n${[...weak, '1x Random Basic Weakness'].join('\n')}`].filter(Boolean).join('\n\n');
   }
+}
+
+// Several different decks for the same investigator and scenario.
+export function buildApproaches(db, opts, { count = 4, seed = 1 } = {}) {
+  const rand = seeded(seed * 7919);
+  const base = new Builder(db, { ...opts, seed });
+  const engines = viableEngines(base.pool, opts.inv, opts.pr || {}, rand, opts.spice ?? 0);
+  const out = [];
+  const overlap = (a, b) => {
+    const ids = new Set([...a.picks.keys()]);
+    let same = 0; for (const [id, e] of b.picks) if (ids.has(id)) same += e.count;
+    return same / Math.max(1, b.counted);
+  };
+  if ((opts.spice ?? 0) < 2) {
+    base.fill();
+    out.push({ key: 'solid', name: 'Solid all-rounder', plan: 'No single theme: the strongest cards you own for this role and scenario.', builder: base });
+  }
+  for (const e of engines) {
+    if (out.length >= count) break;
+    const b = new Builder(db, { ...opts, engine: e, seed: seed + out.length });
+    b.fill();
+    const themed = [...b.picks.values()].filter(x => e.match(x.card)).reduce((s, x) => s + x.count, 0);
+    if (themed < 6) continue;
+    if (out.some(o => overlap(o.builder, b) > 0.75)) continue;
+    out.push({ key: e.key, name: e.name, plan: e.plan, builder: b, themed });
+  }
+  for (const o of out) o.report = o.builder.report();
+  return out;
 }
 
 // Steps for the walk-through.

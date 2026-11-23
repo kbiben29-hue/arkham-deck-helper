@@ -334,7 +334,8 @@ function openInCheckup(text, role, players) {
     db = makeDb(await res.json());
     status('');
     if (store.get('tab') !== 'link') check();
-    initBuilder(db, { cardImg, esc, store, openInCheckup });
+    const camps = await (await fetch('data/campaigns.json')).json();
+    initBuilder(db, camps, { cardImg, esc, store, openInCheckup });
   } catch {
     status('Card data failed to load. Try refreshing the page.', true);
   }

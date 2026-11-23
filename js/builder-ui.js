@@ -1,12 +1,20 @@
 // "Build a deck": collection picker, investigator or role, then auto-build or a step-by-step walk-through.
-import { Builder, STEPS, BUCKETS, REPRINTS, ownedInvestigators, roleFit, autoRole, playerCardCount, identity } from './build.js';
+import { Builder, STEPS, BUCKETS, REPRINTS, ownedInvestigators, roleFit, autoRole, playerCardCount, identity, buildApproaches } from './build.js';
 import { choiceOptions, cardRoles, ROLES } from './analyze.js';
+import { blendProfile, pressures, findings } from './campaign.js';
+import { buildBrief, parseReply } from './claude.js';
 
 const GRADE_TEXT = { strong: 'Strong', ok: 'OK', thin: 'Thin', missing: 'Missing' };
 const FACTIONS = ['guardian', 'seeker', 'rogue', 'mystic', 'survivor', 'neutral'];
 const cap = s => s ? s[0].toUpperCase() + s.slice(1) : '';
 
-export function initBuilder(db, ui) {
+const SPICE = [
+  ['Proven', 'Strong, well-known cards'],
+  ['Mixed', 'Some staples, some fresh ideas'],
+  ['Off the beaten path', 'Skip the usual picks; find unusual combos'],
+];
+
+export function initBuilder(db, camps, ui) {
   const { cardImg, esc, openInCheckup, store } = ui;
   const root = document.querySelector('#view-build');
   const S = {
@@ -20,13 +28,50 @@ export function initBuilder(db, ui) {
     builder: null,
     step: 0,
     showAll: false,
-    done: false,
+    view: '',            // '', 'approaches', 'guide', 'result'
+    campaign: store.get('campaign') || '',
+    scenario: store.get('scenario') || '',
+    spice: +(store.get('spice') || 1),
+    seed: 1,
+    approaches: [],
+    sel: 0,
+    claudeText: '',
+    claudeMsg: '',
   };
   if (!Object.keys(S.owned).length) S.editing = true;
   const save = () => {
     store.set('owned', JSON.stringify(S.owned)); store.set('who', S.who); store.set('inv', S.invCode);
     store.set('brole', S.role); store.set('bplayers', String(S.players));
+    store.set('campaign', S.campaign); store.set('scenario', S.scenario); store.set('spice', String(S.spice));
   };
+
+  // ---------- What are you playing? ----------
+  const campaignBy = Object.fromEntries(camps.campaigns.map(c => [c.code, c]));
+  function playing() {
+    const c = campaignBy[S.campaign];
+    const sc = c?.scenarios.find(x => x.code === S.scenario) || null;
+    const prof = c ? blendProfile(c, sc) : null;
+    return { c, sc, prof, pr: prof ? pressures(prof, camps.average) : null, notes: prof ? findings(prof, camps.average) : [] };
+  }
+  function playingHtml() {
+    const { c, notes } = playing();
+    const groupsC = [
+      ['Chapter Two', camps.campaigns.filter(x => x.chapter === 2 && x.group === 'campaign')],
+      ['Chapter Two standalone scenarios', camps.campaigns.filter(x => x.chapter === 2 && x.group === 'standalone')],
+      ['Campaigns', camps.campaigns.filter(x => x.chapter === 1 && x.group === 'campaign')],
+      ['Return to…', camps.campaigns.filter(x => x.group === 'return')],
+      ['Standalone scenarios', camps.campaigns.filter(x => x.chapter === 1 && x.group === 'standalone')],
+    ].filter(([, l]) => l.length);
+    return `<div class="who-row">
+        <label>Campaign or scenario<select data-campaign>
+          <option value="">Nothing specific (general deck)</option>
+          ${groupsC.map(([g, l]) => `<optgroup label="${g}">${l.map(x => `<option value="${x.code}" ${x.code === S.campaign ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</optgroup>`).join('')}
+        </select></label>
+        ${c && c.scenarios.length > 1 ? `<label>Scenario<select data-scenario><option value="">Whole campaign</option>${c.scenarios.map(x => `<option value="${x.code}" ${x.code === S.scenario ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>` : ''}
+      </div>
+      ${c ? `<div class="findings"><p class="sub" style="margin:10px 0 4px">What this ${S.scenario ? 'scenario' : 'campaign'} throws at you, worked out from its encounter cards:</p>
+        <ul>${notes.map(n => `<li>${esc(n)}</li>`).join('')}${c.note ? `<li>${esc(c.note)}</li>` : ''}</ul></div>` : '<p class="sub" style="margin:10px 0 0">Pick what you\'re playing and decks will be tuned to it. Leave it blank for an all-purpose deck.</p>'}`;
+  }
 
   // ---------- Collection ----------
   const packs = db.packList;
@@ -95,9 +140,13 @@ export function initBuilder(db, ui) {
   }
 
   // ---------- Investigator / role ----------
+  const fitFor = (i, role) => {
+    const pr = playing().pr;
+    return roleFit(i, role) + (pr ? ((i.w || 0) - 3) * pr.willpower * 4 + ((i.a || 0) - 3) * pr.agility * 4 : 0);
+  };
   function currentInv(invs) {
     if (S.who === 'role') {
-      const ranked = [...invs].sort((a, b) => roleFit(b, S.role) - roleFit(a, S.role)).slice(0, 8);
+      const ranked = [...invs].sort((a, b) => fitFor(b, S.role) - fitFor(a, S.role)).slice(0, 8);
       if (!ranked.find(i => i.code === S.invCode)) S.invCode = ranked[0]?.code || '';
     } else if (!invs.find(i => i.code === S.invCode)) S.invCode = invs[0]?.code || '';
     return invs.find(i => i.code === S.invCode);
@@ -113,9 +162,9 @@ export function initBuilder(db, ui) {
         <select data-inv>${byFac.map(([f, l]) => `<optgroup label="${cap(f)}">${l.map(i => `<option value="${i.code}" ${i.code === S.invCode ? 'selected' : ''}>${esc(i.label)}</option>`).join('')}</optgroup>`).join('')}</select></label>
         <p class="sub" style="margin:0 0 10px">${inv ? `${esc(cap(inv.fac))} · ${stats(inv)} · plays best as ${ROLES[autoRole(inv)].toLowerCase()}` : ''}</p></div>`;
     } else {
-      const ranked = [...invs].sort((a, b) => roleFit(b, S.role) - roleFit(a, S.role)).slice(0, 8);
+      const ranked = [...invs].sort((a, b) => fitFor(b, S.role) - fitFor(a, S.role)).slice(0, 8);
       pick = `<div class="seg" role="group" aria-label="Role">${Object.entries(ROLES).map(([k, v]) => `<button data-role="${k}" aria-pressed="${S.role === k}">${v}</button>`).join('')}</div>
-        <p class="sub" style="margin:0">Best ${ROLES[S.role].toLowerCase()} investigators in your collection:</p>
+        <p class="sub" style="margin:0">Best ${ROLES[S.role].toLowerCase()} investigators in your collection${S.campaign ? ' for this campaign' : ''}:</p>
         <div class="inv-pick">${ranked.map(i => `<button class="inv-opt" data-pick="${i.code}" aria-pressed="${i.code === S.invCode}">${cardImg(i)}<span><b>${esc(i.label)}</b><small>${cap(i.fac)} · ${stats(i)}</small></span></button>`).join('')}</div>`;
     }
     const choices = inv ? choiceOptions(inv) : [];
@@ -136,7 +185,34 @@ export function initBuilder(db, ui) {
     const inv = currentInv(invs);
     if (!inv) return null;
     const role = S.who === 'role' ? S.role : (S.irole || 'auto');
-    return new Builder(db, { inv, owned: S.owned, role, players: S.players, choices: { ...S.choices } });
+    return new Builder(db, baseOpts(inv, role));
+  }
+  function baseOpts(inv, role) {
+    return { inv, owned: S.owned, role, players: S.players, choices: { ...S.choices }, pr: playing().pr, spice: S.spice, seed: S.seed };
+  }
+  function makeApproaches() {
+    const invs = ownedInvestigators(db, S.owned);
+    const inv = currentInv(invs);
+    if (!inv) return;
+    const role = S.who === 'role' ? S.role : (S.irole || 'auto');
+    S.approaches = buildApproaches(db, baseOpts(inv, role), { count: 4, seed: S.seed });
+    S.sel = 0;
+    S.builder = S.approaches[0]?.builder || null;
+  }
+  function claudeApproaches(text) {
+    const ideas = parseReply(text);
+    const invs = ownedInvestigators(db, S.owned);
+    const inv = currentInv(invs);
+    const role = S.who === 'role' ? S.role : (S.irole || 'auto');
+    const made = ideas.map((idea, i) => {
+      const b = new Builder(db, { ...baseOpts(inv, role), seed: S.seed + 100 + i, keyNames: idea.key, avoidNames: idea.avoid });
+      b.fill();
+      return { key: 'claude' + i, name: idea.name, plan: idea.plan, why: idea.why, claude: true, missing: b.missingKeys, builder: b, report: b.report() };
+    });
+    S.approaches = [...S.approaches.filter(a => !a.claude), ...made];
+    S.sel = S.approaches.length - made.length;
+    S.builder = S.approaches[S.sel].builder;
+    S.view = 'approaches';
   }
 
   const gradeList = r => `<div class="grades">${r.pillars.map(p => `<div><span>${esc(p.label)}</span><span class="chip ${p.grade}">${GRADE_TEXT[p.grade]}</span></div>`).join('')}</div>`;
@@ -195,8 +271,8 @@ export function initBuilder(db, ui) {
     </div>`;
   }
 
-  function resultHtml(b) {
-    const r = b.report();
+  function deckHtml(b, meta) {
+    const r = meta?.report || b.report();
     const ranked = new Map(b.ranked().map(p => [identity(p.card), p]));
     const groupsOut = [['Assets', 'asset'], ['Events', 'event'], ['Skills', 'skill']].map(([t, type]) => {
       const list = [...b.picks.values()].filter(e => e.card.type === type).sort((a, c) => (a.card.cost ?? 0) - (c.card.cost ?? 0) || a.card.name.localeCompare(c.card.name));
@@ -207,18 +283,59 @@ export function initBuilder(db, ui) {
       }).join('')}</div>`;
     }).join('');
     const short = b.counted < b.size ? `<p class="status err">Only ${b.counted} of ${b.size} cards. Your collection doesn't have enough legal cards for ${esc(b.inv.name)}. Add more products, or fill the gap with whatever you like.</p>` : '';
+    const missing = meta?.missing?.length ? `<p class="sub"><b>Not in your collection or not legal here, so left out:</b> ${esc(meta.missing.join(', '))}.</p>` : '';
     return `<div class="panel">
-      <div class="summary-line"><div><h3 style="font-size:30px">${esc(b.inv.name)}: ${esc(ROLES[b.role].toLowerCase())}</h3>
-        <p class="headline" style="margin-top:6px">${esc(r.headline)}</p></div></div>
-      ${short}
+      <div class="summary-line"><div><h3 style="font-size:30px">${esc(meta?.name || `${b.inv.name}: ${ROLES[b.role].toLowerCase()}`)}</h3>
+        ${meta?.plan ? `<p style="margin:6px 0 0">${esc(meta.plan)}</p>` : ''}
+        ${meta?.why ? `<p class="sub" style="margin:4px 0 0">${esc(meta.why)}</p>` : ''}
+        <p class="headline" style="margin-top:8px">${esc(r.headline)}</p></div></div>
+      ${short}${missing}
       <div class="two-col" style="margin-top:10px">
         <div>${gradeList(r)}</div>
-        <div><p class="sub" style="margin-top:0">Built from your collection with level 0 cards. Signature cards and a random basic weakness are included. Hover or tap a card to see it.</p>
-          <div class="result-actions"><button class="primary" data-act="copy">Copy deck list</button><button class="ghost" data-act="checkup">Full checkup</button><button class="ghost" data-act="guided">Tweak it step by step</button><button class="ghost" data-act="restart">Start over</button></div>
+        <div><p class="sub" style="margin-top:0">${esc(b.inv.name)}, level 0 cards from your collection. Signature cards and a random basic weakness are included. Hover or tap a card to see it.</p>
+          <div class="result-actions"><button class="primary" data-act="copy">Copy deck list</button><button class="ghost" data-act="checkup">Full checkup</button><button class="ghost" data-act="guided">Tweak it step by step</button></div>
           <p class="toast" id="b-toast" role="status"></p></div>
       </div>
       <div class="deck-groups" style="margin-top:14px">${groupsOut}</div>
     </div>`;
+  }
+
+  function claudeHtml() {
+    const { c, sc, notes } = playing();
+    const brief = S.builder ? buildBrief({ db, builder: S.builder, campaign: c, scenario: sc, findings: notes, spice: S.spice }) : '';
+    return `<div class="panel claude">
+      <h3 style="font-size:26px">Ask Claude for more ideas</h3>
+      <p style="margin:6px 0">On your Mac in Chrome, open the <b>Claude side panel</b> on this page and say: <i>“Read the brief on this page and add your approaches.”</i> Claude writes its ideas into the box below and clicks the button. The page turns each idea into a legal deck from your collection.</p>
+      <details><summary class="sub">Brief for Claude (${S.builder ? S.builder.pool.length : 0} cards you own that ${esc(S.builder?.inv.name || 'this investigator')} can use)</summary>
+        <pre id="claude-brief" class="brief">${esc(brief)}</pre></details>
+      <div class="result-actions" style="margin-top:6px"><button class="ghost" data-act="copy-brief">Copy brief</button></div>
+      <label class="field-label" for="claude-plan" style="margin-top:12px">Claude's approaches</label>
+      <textarea id="claude-plan" rows="6" placeholder='{"approaches":[{"name":"…","plan":"…","why":"…","key_cards":["…"],"avoid":[]}]}'>${esc(S.claudeText)}</textarea>
+      <div class="result-actions"><button class="primary" id="claude-build" data-act="claude-build">Build Claude's approaches</button></div>
+      ${S.claudeMsg ? `<p class="status ${S.claudeMsg.startsWith('Built') ? '' : 'err'}">${esc(S.claudeMsg)}</p>` : ''}
+      <p class="sub">No Chrome handy? Copy the brief into the Claude app, then paste its reply into the box above.</p>
+    </div>`;
+  }
+
+  function approachesHtml() {
+    if (!S.approaches.length) return `<div class="panel"><p class="status err">Couldn't build any approaches from this collection. Try adding more products.</p></div>${claudeHtml()}`;
+    const order = { missing: 0, thin: 1, ok: 2, strong: 3 };
+    const tiles = S.approaches.map((a, i) => {
+      const gs = a.report.pillars.map(p => p.grade);
+      const weak = a.report.pillars.filter(p => order[p.grade] <= 1).map(p => p.label.toLowerCase());
+      return `<button class="approach" data-sel="${i}" aria-pressed="${i === S.sel}">
+        <span class="ap-top"><b>${esc(a.name)}</b>${a.claude ? '<span class="tag">Claude</span>' : ''}</span>
+        <span class="ap-plan">${esc(a.plan)}</span>
+        <span class="ap-grades">${gs.map(g => `<i class="pip ${g}"></i>`).join('')}<small>${weak.length ? `Weak: ${esc(weak.join(', '))}` : 'No weak spots'}</small></span>
+      </button>`;
+    }).join('');
+    const a = S.approaches[S.sel];
+    return `<div class="panel"><div class="summary-line"><h3 style="font-size:26px">Approaches for ${esc(a.builder.inv.name)}</h3>
+        <span class="result-actions" style="margin:0"><button class="ghost" data-act="reroll">New ideas</button><button class="ghost" data-act="restart">Start over</button></span></div>
+      <p class="sub" style="margin:4px 0 12px">Different ways to play the same investigator${playing().c ? ` in ${esc(playing().c.name)}` : ''}. Each is a complete deck. Pick one to see it.</p>
+      <div class="approaches">${tiles}</div></div>
+      ${deckHtml(a.builder, a)}
+      ${claudeHtml()}`;
   }
 
   // ---------- Render ----------
@@ -226,26 +343,33 @@ export function initBuilder(db, ui) {
     const invs = ownedInvestigators(db, S.owned);
     const ready = Object.values(S.owned).some(Boolean) && invs.length;
     let out = '';
-    if (S.builder && S.done) out = resultHtml(S.builder);
-    else if (S.builder) out = guideHtml(S.builder);
+    if (S.view === 'approaches') out = approachesHtml();
+    else if (S.view === 'result' && S.builder) out = deckHtml(S.builder) + claudeHtml();
+    else if (S.view === 'guide' && S.builder) out = guideHtml(S.builder);
     root.innerHTML = `
       <section class="panel b-step"><h2><span class="num">1</span> Your collection</h2>${collectionHtml()}</section>
-      ${!S.editing ? `<section class="panel b-step"><h2><span class="num">2</span> Who are you building for?</h2>${whoHtml(invs)}</section>
-      <section class="panel b-step"><h2><span class="num">3</span> How do you want to build it?</h2>
+      ${!S.editing ? `<section class="panel b-step"><h2><span class="num">2</span> What are you playing?</h2>${playingHtml()}</section>
+      <section class="panel b-step"><h2><span class="num">3</span> Who are you building for?</h2>${whoHtml(invs)}</section>
+      <section class="panel b-step"><h2><span class="num">4</span> How do you want to build it?</h2>
+        <p class="field-label" style="margin:0 0 6px">How far outside the box?</p>
+        <div class="seg" role="group" aria-label="How far outside the box">${SPICE.map(([n, d], i) => `<button data-spice="${i}" aria-pressed="${S.spice === i}" title="${d}">${n}</button>`).join('')}</div>
+        <p class="sub" style="margin:6px 0 14px">${SPICE[S.spice][1]}.</p>
         <div class="modes">
-          <button class="mode" data-act="auto" ${ready ? '' : 'disabled'}><b>Build it for me</b><span>A complete, legal deck from your collection in one click. You can tweak it after.</span></button>
+          <button class="mode" data-act="auto" ${ready ? '' : 'disabled'}><b>Show me approaches</b><span>Several complete decks, each built around a different plan, tuned to what you're playing. Ask Claude for more.</span></button>
           <button class="mode" data-act="walk" ${ready ? '' : 'disabled'}><b>Walk me through it</b><span>Pick cards step by step, from key cards to skills, with suggestions and a live checkup.</span></button>
         </div></section>` : ''}
       <section id="b-out" class="b-step" ${out ? '' : 'hidden'}>${out}</section>`;
   }
 
-  function resetBuild() { S.builder = null; S.done = false; S.step = 0; S.showAll = false; }
+  function resetBuild() { S.builder = null; S.view = ''; S.step = 0; S.showAll = false; S.approaches = []; S.claudeMsg = ''; }
   const scrollToOut = () => document.querySelector('#b-out')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   root.addEventListener('change', e => {
     const t = e.target;
     if (t.dataset.pack) { if (t.checked) S.owned[t.dataset.pack] = 1; else delete S.owned[t.dataset.pack]; }
     else if (t.dataset.copies) S.owned[t.dataset.copies] = +t.value;
+    else if (t.dataset.campaign !== undefined) { S.campaign = t.value; S.scenario = ''; resetBuild(); }
+    else if (t.dataset.scenario !== undefined) { S.scenario = t.value; resetBuild(); }
     else if (t.dataset.inv !== undefined) { S.invCode = t.value; S.choices = {}; resetBuild(); }
     else if (t.dataset.players !== undefined) { S.players = +t.value; resetBuild(); }
     else if (t.dataset.irole !== undefined) { S.irole = t.value === 'auto' ? '' : t.value; resetBuild(); }
@@ -253,6 +377,7 @@ export function initBuilder(db, ui) {
     else return;
     save(); render();
   });
+  root.addEventListener('input', e => { if (e.target.id === 'claude-plan') S.claudeText = e.target.value; });
 
   root.addEventListener('click', async e => {
     const t = e.target.closest('button');
@@ -263,6 +388,8 @@ export function initBuilder(db, ui) {
     else if (d.who) { S.who = d.who; resetBuild(); }
     else if (d.role) { S.role = d.role; S.invCode = ''; resetBuild(); }
     else if (d.pick) { S.invCode = d.pick; S.choices = {}; resetBuild(); }
+    else if (d.spice) { S.spice = +d.spice; resetBuild(); }
+    else if (d.sel) { S.sel = +d.sel; S.builder = S.approaches[S.sel].builder; render(); return; }
     else if (d.inc || d.dec) {
       const id = d.inc || d.dec;
       const p = S.builder.pool.find(x => identity(x.card) === id);
@@ -273,21 +400,38 @@ export function initBuilder(db, ui) {
     else if (d.act === 'done-coll') { S.editing = false; resetBuild(); }
     else if (d.act === 'all') packs.forEach(p => S.owned[p.code] = S.owned[p.code] || 1);
     else if (d.act === 'none') S.owned = {};
-    else if (d.act === 'auto') { S.builder = newBuilder(); S.builder?.fill(); S.done = true; save(); render(); scrollToOut(); return; }
-    else if (d.act === 'walk') { S.builder = newBuilder(); S.done = false; S.step = 0; save(); render(); scrollToOut(); return; }
+    else if (d.act === 'auto' || d.act === 'reroll') {
+      if (d.act === 'reroll') S.seed++;
+      t.disabled = true; t.querySelector('span') && (t.querySelector('span').textContent = 'Building…');
+      await new Promise(r => setTimeout(r, 30));
+      makeApproaches(); S.view = 'approaches'; save(); render(); scrollToOut(); return;
+    }
+    else if (d.act === 'walk') { S.builder = newBuilder(); S.view = 'guide'; S.step = 0; save(); render(); scrollToOut(); return; }
     else if (d.act === 'next') { S.step++; S.showAll = false; render(); scrollToOut(); return; }
     else if (d.act === 'back') { S.step--; S.showAll = false; render(); scrollToOut(); return; }
     else if (d.act === 'more') S.showAll = !S.showAll;
-    else if (d.act === 'autofill') { S.builder.fill(); S.done = true; render(); scrollToOut(); return; }
-    else if (d.act === 'finish') { S.done = true; render(); scrollToOut(); return; }
-    else if (d.act === 'guided') { S.done = false; S.step = STEPS.length - 1; render(); scrollToOut(); return; }
+    else if (d.act === 'autofill') { S.builder.fill(); S.view = 'result'; render(); scrollToOut(); return; }
+    else if (d.act === 'finish') { S.view = 'result'; render(); scrollToOut(); return; }
+    else if (d.act === 'guided') { S.view = 'guide'; S.step = STEPS.length - 1; render(); scrollToOut(); return; }
     else if (d.act === 'restart') { resetBuild(); render(); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
-    else if (d.act === 'copy') {
-      const text = S.builder.text();
+    else if (d.act === 'copy' || d.act === 'copy-brief') {
+      const text = d.act === 'copy' ? S.builder.text() : document.querySelector('#claude-brief').textContent;
       let ok = false;
       try { await navigator.clipboard.writeText(text); ok = true; } catch { /* fall through */ }
-      document.querySelector('#b-toast').textContent = ok ? 'Copied. Paste it anywhere, including the Check a deck tab.' : 'Your browser blocked copying. Use “Full checkup” and copy from the text box there.';
+      const toast = document.querySelector('#b-toast');
+      const msg = ok ? (d.act === 'copy' ? 'Copied. Paste it anywhere, including the Check a deck tab.' : 'Brief copied. Paste it into Claude.') : 'Your browser blocked copying.';
+      if (d.act === 'copy' && toast) toast.textContent = msg; else { S.claudeMsg = msg; render(); }
       return;
+    }
+    else if (d.act === 'claude-build') {
+      try {
+        if (!S.approaches.length) makeApproaches();
+        claudeApproaches(S.claudeText);
+        S.claudeMsg = `Built ${S.approaches.filter(a => a.claude).length} approaches from Claude's ideas. They're marked "Claude" above.`;
+      } catch (err) {
+        S.claudeMsg = "Couldn't read that. Make sure it's the JSON reply from Claude: it starts with { and contains \"approaches\".";
+      }
+      render(); if (S.claudeMsg.startsWith('Built')) scrollToOut(); return;
     }
     else if (d.act === 'checkup') { openInCheckup(S.builder.text(), S.builder.role, S.builder.players); return; }
     else return;
