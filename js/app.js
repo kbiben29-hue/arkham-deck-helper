@@ -358,7 +358,8 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) chec
     if (store.get('tab') !== 'link') check();
     const camps = await (await fetch(`data/campaigns.json?v=${window.APP_VERSION || ''}`)).json();
     initBuilder(db, camps, { cardImg, esc, store, openInCheckup });
-    initChaos(camps, { esc, store });
+    const bags = await (await fetch(`data/bags.json?v=${window.APP_VERSION || ''}`)).json();
+    initChaos(camps, bags, { esc, store });
   } catch {
     status('Card data failed to load. Try refreshing the page.', true);
   }

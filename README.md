@@ -4,7 +4,7 @@ Two tools for Arkham Horror: The Card Game:
 
 - **Build a deck**: tick the products you own (every Chapter One and Chapter Two release, standalone scenarios, parallels, novellas and promos), choose an investigator or a role, then let it build a full level-0 deck or walk you through picking cards step by step with a live checkup.
   It also asks what you're playing (any campaign, Return to box or standalone scenario), reads that campaign's encounter cards to see what it throws at you, and offers several decks built around different plans. There's an "outside the box" setting, and Claude can add its own ideas through Claude in Chrome or the Claude app.
-- **Chaos bag**: build your bag (Night of the Zealot presets, or your own counts), pull scenario token effects for every scenario at either difficulty, draw tokens (bless/curse redraw and leave the bag), and see your exact odds of passing a test.
+- **Chaos bag**: the guide's bag for every campaign (whole-campaign start bags at each difficulty, saved as you change them) and every standalone scenario and side story, pull scenario token effects for every scenario at either difficulty, draw tokens (bless/curse redraw and leave the bag), and see your exact odds of passing a test.
 - **Check a deck**: paste a deck (or an ArkhamDB link) and see what it does well, where it's thin, and what to fix first.
 
 ## What it checks

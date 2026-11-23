@@ -7,14 +7,6 @@ const ALL = [...NUMS, ...SYMBOLS, ...SPECIAL];
 const LABEL = { skull: 'Skull', cultist: 'Cultist', tablet: 'Tablet', elder_thing: 'Elder Thing', auto_fail: 'Auto-fail', elder_sign: 'Elder Sign', bless: 'Bless', curse: 'Curse', frost: 'Frost' };
 const SHORT = { skull: 'Sk', cultist: 'Cu', tablet: 'Ta', elder_thing: 'ET', auto_fail: '✕', elder_sign: '★', bless: 'B', curse: 'C', frost: 'Fr' };
 
-// Night of the Zealot bags from the Core Set campaign guide.
-const PRESETS = {
-  'notz-easy': { name: 'Night of the Zealot: Easy', bag: { '+1': 2, '0': 3, '-1': 3, '-2': 2, skull: 2, cultist: 1, tablet: 1, auto_fail: 1, elder_sign: 1 } },
-  'notz-standard': { name: 'Night of the Zealot: Standard', bag: { '+1': 1, '0': 2, '-1': 3, '-2': 2, '-3': 1, '-4': 1, skull: 2, cultist: 1, tablet: 1, auto_fail: 1, elder_sign: 1 } },
-  'notz-hard': { name: 'Night of the Zealot: Hard', bag: { '0': 3, '-1': 2, '-2': 2, '-3': 2, '-4': 1, '-5': 1, skull: 2, cultist: 1, tablet: 1, auto_fail: 1, elder_sign: 1 } },
-  'notz-expert': { name: 'Night of the Zealot: Expert', bag: { '0': 1, '-1': 2, '-2': 2, '-3': 2, '-4': 2, '-5': 1, '-6': 1, '-8': 1, skull: 2, cultist: 1, tablet: 1, auto_fail: 1, elder_sign: 1 } },
-};
-
 // Read a symbol's effect text: "-2. If you fail…" → { value: -2 }, "-X. X is…" → X, "Reveal another token…" → redraw.
 function parseEffect(text) {
   if (!text) return null;
@@ -28,26 +20,54 @@ function parseEffect(text) {
   return { value: n, redraw: /reveal another/i.test(t), x: false };
 }
 
-export function initChaos(camps, ui) {
+export function initChaos(camps, bags, ui) {
   const { esc, store } = ui;
   const root = document.querySelector('#view-bag');
-  const saved = (() => { try { return JSON.parse(store.get('bag') || 'null'); } catch { return null; } })();
+  const saved = (() => { try { return JSON.parse(store.get('bag2') || 'null'); } catch { return null; } })();
   const S = saved || {
-    bag: { ...PRESETS['notz-standard'].bag }, preset: 'notz-standard',
+    mode: 'campaign', source: 'notz', scenario: '', diff: 'standard',
+    custom: {},   // edited bags, keyed by mode|campaign|scenario|difficulty
     values: { skull: -1, cultist: -2, tablet: -2, elder_thing: -3, elder_sign: 1, frost: -1 },
     redraw: { skull: false, cultist: false, tablet: false, elder_thing: false },
-    campaign: '', scenario: '', hard: false,
     skill: 3, difficulty: 2,
   };
   S.history = []; S.last = null;
-  const save = () => { const { history, last, ...keep } = S; store.set('bag', JSON.stringify(keep)); };
-  const campaignBy = Object.fromEntries(camps.campaigns.map(c => [c.code, c]));
+  const save = () => { const { history, last, ...keep } = S; store.set('bag2', JSON.stringify(keep)); };
+
+  const bagBy = Object.fromEntries(bags.map(b => [b.id, b]));
+  const norm = n => (n || '').toLowerCase().replace(/^return to /, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  const effectsByName = new Map();
+  for (const c of camps.campaigns) for (const sc of c.scenarios) if (sc.profile.tokenText && !effectsByName.has(norm(sc.name))) effectsByName.set(norm(sc.name), sc.profile.tokenText);
+
+  const source = () => bagBy[S.source] || bags[0];
+  const scen = () => { const src = source(); return src.scenarios.find(x => x.id === S.scenario) || (src.kind === 'side' ? src.scenarios[0] : null); };
+  const counts = list => list.reduce((o, t) => { const k = t === 'elder_thing' || NUMS.includes(t) || SYMBOLS.includes(t) || SPECIAL.includes(t) ? t : t; o[k] = (o[k] || 0) + 1; return o; }, {});
+  // Which bag the guide says to use for the current choices, and why.
+  function guideBag() {
+    const src = source(), sc = scen();
+    const standalone = S.mode === 'standalone' || src.kind === 'side';
+    if (standalone && sc?.standalone) {
+      const d = sc.standalone[S.diff] ? S.diff : Object.keys(sc.standalone)[0];
+      return { list: sc.standalone[d], diff: d, why: `Standalone bag for ${sc.name} (${cap(d)}), from its setup.` };
+    }
+    const d = src.bags[S.diff] ? S.diff : Object.keys(src.bags)[0];
+    if (!d) return { list: [], diff: S.diff, why: 'No bag listed for this one. Set the tokens yourself.' };
+    return { list: src.bags[d], diff: d, why: standalone
+      ? `${sc ? `${sc.name} has no separate standalone bag listed, so this` : 'This'} is ${src.name}'s starting bag (${cap(d)}). Check the scenario's standalone setup for extra tokens.`
+      : `${src.name} starting bag (${cap(d)}). As the campaign goes on, add and remove tokens as your campaign log says; your changes are saved for this campaign.` };
+  }
+  const key = () => S.mode === 'standalone' || source().kind === 'side' ? `s|${S.source}|${scen()?.id || ''}|${S.diff}` : `c|${S.source}|${S.diff}`;
+  const bagNow = () => S.custom[key()] || counts(guideBag().list);
+  const editBag = fn => { const b = { ...bagNow() }; fn(b); S.custom[key()] = b; };
+  Object.defineProperty(S, 'bag', { get: bagNow, enumerable: false, configurable: true });
+  const cap = w => w ? w[0].toUpperCase() + w.slice(1) : '';
 
   function effects() {
-    const c = campaignBy[S.campaign];
-    const sc = c?.scenarios.find(x => x.code === S.scenario);
-    const tt = sc?.profile.tokenText;
-    return tt ? (S.hard ? tt.hard : tt.standard) || tt.standard : null;
+    const sc = scen();
+    const tt = sc ? effectsByName.get(norm(sc.name)) : null;
+    if (!tt) return null;
+    const hard = S.diff === 'hard' || S.diff === 'expert';
+    return (hard ? tt.hard : tt.standard) || tt.standard;
   }
   function applyScenarioValues() {
     const fx = effects();
@@ -108,7 +128,7 @@ export function initChaos(camps, ui) {
       if (!v.redraw) break;
     }
     // Bless and curse tokens leave the bag once revealed
-    for (const k of chain) if ((k === 'bless' || k === 'curse') && S.bag[k] > 0) S.bag[k]--;
+    if (chain.some(k => k === 'bless' || k === 'curse')) editBag(b => { for (const k of chain) if ((k === 'bless' || k === 'curse') && b[k] > 0) b[k]--; });
     S.last = { chain, mod, fail };
     S.history.unshift(S.last);
     S.history = S.history.slice(0, 12);
@@ -124,13 +144,13 @@ export function initChaos(camps, ui) {
 
   function render() {
     const fx = effects();
-    const c = campaignBy[S.campaign];
-    const total = Object.values(S.bag).reduce((a, b) => a + b, 0);
+    const total = Object.values(bagNow()).reduce((a, b) => a + b, 0);
     const dist = distribution();
     const margins = [-2, -1, 0, 1, 2, 3, 4, 5];
     const yourChance = chance(dist, (+S.skill || 0) - (+S.difficulty || 0));
+    const bagC = bagNow();
     const row = k => `<div class="bag-row">${tokenBadge(k)}<span class="bag-name">${esc(LABEL[k] || k)}</span>
-      <span class="stepper"><button data-dec="${k}" ${S.bag[k] ? '' : 'disabled'} aria-label="Remove a ${esc(LABEL[k] || k)} token">−</button><span>${S.bag[k] || 0}</span><button data-inc="${k}" aria-label="Add a ${esc(LABEL[k] || k)} token">+</button></span></div>`;
+      <span class="stepper"><button data-dec="${k}" ${bagC[k] ? '' : 'disabled'} aria-label="Remove a ${esc(LABEL[k] || k)} token">−</button><span>${bagC[k] || 0}</span><button data-inc="${k}" aria-label="Add a ${esc(LABEL[k] || k)} token">+</button></span></div>`;
     const symRow = k => `<div class="sym-row">
       <div class="sym-head">${tokenBadge(k)}<b>${LABEL[k]}</b>
         <label class="inline">Value <input type="number" inputmode="numeric" data-val="${k}" value="${S.values[k] <= -99 ? '' : S.values[k]}" ${S.values[k] <= -99 ? 'placeholder="fail"' : ''}></label>
@@ -143,20 +163,33 @@ export function initChaos(camps, ui) {
         ${S.last.chain.some(k => SYMBOLS.includes(k)) && fx ? `<p class="sub">${S.last.chain.filter(k => SYMBOLS.includes(k)).map(k => `<b>${LABEL[k]}:</b> ${esc((fx[k] || '').replace(/\[\[([^\]]+)\]\]/g, '$1').replace(/\[(\w+)\]/g, (m, w) => LABEL[w] || w))}`).join('<br>')}</p>` : ''}
       </div>` : `<p class="sub">Draw a token to resolve a test. Tokens go back in the bag after each draw, except bless and curse, which leave it.</p>`;
 
+    const src = source(), sc = scen(), gb = guideBag();
+    const edited = !!S.custom[key()];
+    const groups = [
+      ['Campaigns', bags.filter(b => b.kind === 'campaign')],
+      ['Return to…', bags.filter(b => b.kind === 'return')],
+      ['Standalone scenarios and side stories', bags.filter(b => b.kind === 'side')],
+    ];
+    const diffs = ['easy', 'standard', 'hard', 'expert'].filter(d => (sc?.standalone && (S.mode === 'standalone' || src.kind === 'side') ? sc.standalone[d] : src.bags[d]));
+    const campScens = src.scenarios.filter(x => src.kind !== 'side');
+    const notes = [
+      ...(S.mode === 'standalone' || src.kind === 'side' ? sc?.standaloneNotes || [] : []),
+      ...(S.mode === 'campaign' && src.kind !== 'side' ? (sc?.campaignNotes || []).map(n => `During ${sc.name} setup: ${n}`) : []),
+    ];
     root.innerHTML = `
       <section class="panel b-step">
         <h2>Your chaos bag <span class="sub" style="font-family:inherit;font-size:16px">${total} tokens</span></h2>
+        ${src.kind !== 'side' ? `<div class="seg" role="group" aria-label="How you're playing" style="margin-top:10px"><button data-mode="campaign" aria-pressed="${S.mode === 'campaign'}">Whole campaign</button><button data-mode="standalone" aria-pressed="${S.mode === 'standalone'}">Standalone scenario</button></div>` : ''}
         <div class="who-row" style="margin-top:10px">
-          <label>Start from<select data-preset>
-            <option value="">Keep my bag</option>
-            ${Object.entries(PRESETS).map(([k, p]) => `<option value="${k}" ${S.preset === k ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
+          <label>What you're playing<select data-src>
+            ${groups.map(([g, l]) => `<optgroup label="${g}">${l.map(b => `<option value="${b.id}" ${b.id === S.source ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</optgroup>`).join('')}
           </select></label>
-          <label>Scenario (for token effects)<select data-camp><option value="">None</option>
-            ${camps.campaigns.filter(x => x.scenarios.some(s => s.profile.tokenText)).map(x => `<option value="${x.code}" ${x.code === S.campaign ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
-          ${c ? `<label>&nbsp;<select data-scen>${c.scenarios.filter(s => s.profile.tokenText).map(s => `<option value="${s.code}" ${s.code === S.scenario ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>` : ''}
-          ${c ? `<div class="seg" role="group" aria-label="Difficulty"><button data-hard="0" aria-pressed="${!S.hard}">Easy / Standard</button><button data-hard="1" aria-pressed="${S.hard}">Hard / Expert</button></div>` : ''}
+          ${campScens.length ? `<label>Scenario<select data-scen>${S.mode === 'campaign' ? '<option value="">(any)</option>' : ''}${campScens.map(x => `<option value="${x.id}" ${x.id === (sc?.id || '') ? 'selected' : ''}>${esc(x.name)}${S.mode === 'standalone' && x.standalone ? ' ★' : ''}</option>`).join('')}</select></label>` : ''}
+          <div class="seg" role="group" aria-label="Difficulty">${diffs.map(d => `<button data-diff="${d}" aria-pressed="${gb.diff === d}">${cap(d)}</button>`).join('')}</div>
         </div>
-        <p class="sub" style="margin:8px 0 0">Your campaign log says which tokens are in the bag. Presets cover Night of the Zealot; for other campaigns, set the counts below once and they're remembered on this device.</p>
+        <p class="sub" style="margin:8px 0 0">${esc(gb.why)}${edited ? ' <b>You\'ve changed this bag.</b> <button class="linkish small" data-act="reset-bag">Reset to the guide\'s bag</button>' : ''}</p>
+        ${S.mode === 'standalone' && src.kind !== 'side' ? '<p class="sub" style="margin:4px 0 0">★ = has its own standalone bag in the guide.</p>' : ''}
+        ${notes.length ? `<ul class="bag-notes">${notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
         <div class="bag-grid">
           <div><h3 class="mini-h">Numbers</h3>${NUMS.map(row).join('')}</div>
           <div><h3 class="mini-h">Symbols and specials</h3>${[...SYMBOLS, ...SPECIAL].map(row).join('')}</div>
@@ -174,7 +207,7 @@ export function initChaos(camps, ui) {
           <h2>Odds</h2>
           <div class="who-row">
             <label>Your skill<input type="number" inputmode="numeric" data-skill value="${S.skill}"></label>
-            <label>Test difficulty<input type="number" inputmode="numeric" data-diff value="${S.difficulty}"></label>
+            <label>Test difficulty<input type="number" inputmode="numeric" data-tdiff value="${S.difficulty}"></label>
           </div>
           <p class="odds-big"><b>${pctTxt(yourChance)}</b> chance to pass</p>
           <p class="sub" style="margin:2px 0 10px">Includes the symbol values and "reveal another" settings below, bless and curse, and a ${pctTxt(dist.fail)} chance of automatic failure.</p>
@@ -184,7 +217,7 @@ export function initChaos(camps, ui) {
 
       <section class="panel b-step">
         <h2>Symbol tokens</h2>
-        <p class="sub" style="margin:4px 0 10px">${fx ? `Values filled in from ${esc(c.scenarios.find(s => s.code === S.scenario)?.name || '')} (${S.hard ? 'Hard / Expert' : 'Easy / Standard'}). Where the card says -X, set X for the current situation.` : 'Pick a scenario above to fill these in from its reference card, or set them yourself.'}</p>
+        <p class="sub" style="margin:4px 0 10px">${fx ? `Values filled in from ${esc(scen()?.name || '')} (${S.diff === 'hard' || S.diff === 'expert' ? 'Hard / Expert' : 'Easy / Standard'}). Where the card says -X, set X for the current situation.` : 'Pick a scenario above to fill these in from its reference card, or set them yourself.'}</p>
         <div class="sym-grid">${SYMBOLS.map(symRow).join('')}
           <div class="sym-row"><div class="sym-head">${tokenBadge('elder_sign')}<b>Elder Sign</b><label class="inline">Value <input type="number" inputmode="numeric" data-val="elder_sign" value="${S.values.elder_sign}"></label></div><p class="sub fx">Set this to your investigator's Elder Sign bonus.</p></div>
           <div class="sym-row"><div class="sym-head">${tokenBadge('frost')}<b>Frost</b><label class="inline">Value <input type="number" inputmode="numeric" data-val="frost" value="${S.values.frost}"></label></div><p class="sub fx">Only used in some campaigns. Set it as your rules say.</p></div>
@@ -195,22 +228,23 @@ export function initChaos(camps, ui) {
   root.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     const d = b.dataset;
-    if (d.inc) { S.bag[d.inc] = (S.bag[d.inc] || 0) + 1; S.preset = ''; }
-    else if (d.dec) { S.bag[d.dec] = Math.max(0, (S.bag[d.dec] || 0) - 1); S.preset = ''; }
+    if (d.inc) editBag(x => { x[d.inc] = (x[d.inc] || 0) + 1; });
+    else if (d.dec) editBag(x => { x[d.dec] = Math.max(0, (x[d.dec] || 0) - 1); });
     else if (d.act === 'draw') draw();
-    else if (d.hard !== undefined) { S.hard = d.hard === '1'; applyScenarioValues(); }
+    else if (d.act === 'reset-bag') delete S.custom[key()];
+    else if (d.mode) { S.mode = d.mode; if (S.mode === 'standalone' && !S.scenario) S.scenario = source().scenarios.find(x => x.standalone)?.id || source().scenarios[0]?.id || ''; applyScenarioValues(); }
+    else if (d.diff) { S.diff = d.diff; applyScenarioValues(); }
     else return;
     save(); render();
   });
   root.addEventListener('change', e => {
     const t = e.target, d = t.dataset;
-    if (d.preset !== undefined) { if (t.value) { S.bag = { ...PRESETS[t.value].bag }; S.preset = t.value; } }
-    else if (d.camp !== undefined) { S.campaign = t.value; const c = campaignBy[t.value]; S.scenario = c?.scenarios.find(s => s.profile.tokenText)?.code || ''; applyScenarioValues(); }
+    if (d.src !== undefined) { S.source = t.value; S.scenario = source().kind === 'side' ? source().scenarios[0]?.id : (S.mode === 'standalone' ? source().scenarios[0]?.id || '' : ''); if (!source().bags[S.diff] && !(scen()?.standalone?.[S.diff])) S.diff = Object.keys(scen()?.standalone || source().bags)[0] || 'standard'; applyScenarioValues(); }
     else if (d.scen !== undefined) { S.scenario = t.value; applyScenarioValues(); }
     else if (d.val) { S.values[d.val] = t.value === '' ? 0 : +t.value; }
     else if (d.redraw) { S.redraw[d.redraw] = t.checked; }
     else if (d.skill !== undefined) S.skill = +t.value;
-    else if (d.diff !== undefined) S.difficulty = +t.value;
+    else if (d.tdiff !== undefined) S.difficulty = +t.value;
     else return;
     save(); render();
   });
