@@ -61,7 +61,7 @@ export function chanceAtLeastOne(size, hits, draws) {
 }
 
 // --- Deckbuilding rules -----------------------------------------------------
-function optionMatches(o, card) {
+export function optionMatches(o, card) {
   const facs = [card.fac, card.fac2, card.fac3].filter(Boolean);
   const xp = card.xp ?? 0;
   const lvl = o.level || o.base_level;
@@ -85,10 +85,51 @@ function optionMatches(o, card) {
   return true;
 }
 
-function checkLegality(inv, entries, requiredCodes) {
+// Turn an investigator's deckbuilding options into concrete rules, applying any class/trait choices.
+export function choiceOptions(inv) {
+  return (inv?.options || []).filter(o => o.faction_select || o.option_select || o.deck_size_select)
+    .map(o => ({
+      key: o.id || o.name || 'choice',
+      name: o.name || (o.deck_size_select ? 'Deck size' : 'Choice'),
+      values: o.deck_size_select ? o.deck_size_select.map(v => ({ value: v, label: `${v} cards` }))
+        : o.faction_select ? o.faction_select.map(v => ({ value: v, label: v[0].toUpperCase() + v.slice(1) }))
+        : o.option_select.map(v => ({ value: v.id, label: v.name })),
+      sizeSelect: !!o.deck_size_select,
+    }));
+}
+export function deckOptions(inv, choices = {}) {
+  return (inv?.options || []).map(o => {
+    const key = o.id || o.name || 'choice';
+    const pick = choices[key];
+    if (o.faction_select) return pick ? { ...o, faction_select: undefined, faction: [pick] } : { ...o, _choice: true };
+    if (o.option_select) {
+      const chosen = o.option_select.find(x => x.id === pick);
+      return chosen ? { ...chosen, limit: o.limit ?? chosen.limit } : { ...o, option_select: undefined, _choice: true, _union: o.option_select };
+    }
+    return o;
+  });
+}
+// Find which rule lets a card in. limits: Map of option index -> copies used so far.
+export function placeCard(opts, card, limits, count = 1) {
+  for (const [idx, o] of opts.entries()) {
+    if (o.deck_size_select || o.atleast && o.ignore_match) continue;
+    const candidates = o._union ? o._union : [o];
+    if (!candidates.some(c => optionMatches(c, card))) continue;
+    if (o.not) return { ok: false, not: true, error: o.error };
+    if (o.limit) {
+      const used = limits.get(idx) || 0;
+      if (used + count > o.limit) continue; // overflow may fit a later option
+      limits.set(idx, used + count);
+    }
+    return { ok: true, idx, choice: !!o._choice };
+  }
+  return { ok: false };
+}
+
+function checkLegality(inv, entries, choices, requiredCodes) {
   const issues = [];
   if (!inv) return issues;
-  const opts = (inv.options || []).flatMap(o => o.option_select ? [{ ...o, option_select: undefined, _choice: true, _union: o.option_select }] : [o]);
+  const opts = deckOptions(inv, choices);
   const limits = new Map();
   let usedChoice = false;
   for (const { card, count } of entries) {
@@ -97,22 +138,10 @@ function checkLegality(inv, entries, requiredCodes) {
       issues.push({ level: 'error', text: `${card.name} is a signature card for a different investigator.` });
       continue;
     }
-    let ok = false;
-    for (const [idx, o] of opts.entries()) {
-      if (o.deck_size_select || o.atleast && o.ignore_match) continue;
-      const candidates = o._union ? o._union : [o];
-      const hit = candidates.some(c => optionMatches(c, card));
-      if (!hit) continue;
-      if (o.not) { issues.push({ level: 'error', text: `${card.name} isn't allowed${o.error ? ': ' + o.error.toLowerCase() : ` in ${inv.name}'s deck`}.` }); ok = true; break; }
-      if (o._choice || o.faction_select) usedChoice = true;
-      if (o.limit) {
-        const l = limits.get(idx) || { used: 0, o };
-        if (l.used + count > o.limit) continue; // overflow may fit a later option
-        l.used += count; limits.set(idx, l);
-      }
-      ok = true; break;
-    }
-    if (!ok) issues.push({ level: 'error', text: `${card.name}${card.xp ? ` (${card.xp})` : ''} isn't in ${inv.name}'s deckbuilding options.` });
+    const r = placeCard(opts, card, limits, count);
+    if (r.not) issues.push({ level: 'error', text: `${card.name} isn't allowed${r.error ? ': ' + r.error.toLowerCase() : ` in ${inv.name}'s deck`}.` });
+    else if (!r.ok) issues.push({ level: 'error', text: `${card.name}${card.xp ? ` (${card.xp})` : ''} isn't in ${inv.name}'s deckbuilding options.` });
+    else if (r.choice) usedChoice = true;
   }
   for (const o of opts) {
     if (!o.atleast) continue;
@@ -141,6 +170,7 @@ export function analyze(deck, { role = 'auto', players = 2 } = {}) {
     }
   }
   const sizeSelect = inv?.options?.find(o => o.deck_size_select);
+  const sizeChoice = sizeSelect && deck.choices?.[sizeSelect.id || sizeSelect.name || 'choice'];
   const isRequired = card => reqCodes.has(card.code) || (card.dup && reqCodes.has(card.dup)) || (inv && card.restrictions?.includes(inv.code));
   const counted = entries.filter(e => !e.card.subtype && !e.card.permanent && !isRequired(e.card) && e.card.type !== 'investigator');
   const deckSize = counted.reduce((s, e) => s + e.count, 0);
@@ -299,7 +329,7 @@ export function analyze(deck, { role = 'auto', players = 2 } = {}) {
 
   // Legality
   const legality = [];
-  const allowedSizes = sizeSelect ? sizeSelect.deck_size_select.map(Number) : [sizeReq];
+  const allowedSizes = sizeChoice ? [+sizeChoice] : sizeSelect ? sizeSelect.deck_size_select.map(Number) : [sizeReq];
   if (inv && !allowedSizes.includes(deckSize)) legality.push({ level: 'error', text: `Deck has ${deckSize} cards, but ${inv.name} needs ${allowedSizes.join(' or ')}.` });
   if (inv) for (const code of new Set([...reqCodes])) { /* handled below by name */ }
   if (inv?.req) {
@@ -319,7 +349,7 @@ export function analyze(deck, { role = 'auto', players = 2 } = {}) {
     v.n += e.count; byName.set(k, v);
   }
   for (const v of byName.values()) if (!v.card.subtype && v.n > v.limit) legality.push({ level: 'error', text: `${v.n} copies of ${v.card.name}; the limit is ${v.limit}.` });
-  legality.push(...checkLegality(inv, entries, new Set([...reqCodes].concat(entries.filter(e => isRequired(e.card)).map(e => e.card.code)))));
+  legality.push(...checkLegality(inv, entries, deck.choices || {}, new Set([...reqCodes].concat(entries.filter(e => isRequired(e.card)).map(e => e.card.code)))));
   if (!entries.some(e => e.card.subtype === 'basicweakness') && !deck.randomWeakness && inv) legality.push({ level: 'warn', text: 'No basic weakness listed. Remember to add one before you play.' });
 
   const xp = entries.reduce((s, e) => s + (e.card.xp || 0) * e.count * (e.card.exceptional ? 2 : 1), 0);

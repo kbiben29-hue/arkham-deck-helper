@@ -1,6 +1,7 @@
 import { makeDb, parseAny, parseJson, parseLink, fetchArkhamDb } from './parse.js';
 import { analyze, ROLES } from './analyze.js';
 import { SAMPLE_DECK } from './sample.js';
+import { initBuilder } from './builder-ui.js';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -208,7 +209,7 @@ function showPreview(code, x, y) {
 }
 document.addEventListener('mousemove', e => {
   if (!canHover || !db) return;
-  const el = e.target.closest('[data-code].row, [data-code].mini');
+  const el = e.target.closest('[data-code].row, [data-code].mini, [data-code].peek, [data-code].inv-opt');
   if (el) showPreview(el.dataset.code, e.clientX, e.clientY); else preview.classList.remove('show');
 });
 
@@ -230,7 +231,8 @@ function openCard(code) {
 }
 dialog.addEventListener('click', e => { if (e.target === dialog || e.target.closest('.close')) dialog.close(); });
 
-$('#results').addEventListener('click', e => {
+document.addEventListener('click', e => {
+  if (!db) return;
   const toggle = e.target.closest('.show-cards');
   if (toggle) {
     const list = toggle.nextElementSibling;
@@ -239,7 +241,7 @@ $('#results').addEventListener('click', e => {
     toggle.textContent = list.hidden ? 'Show the cards' : 'Hide the cards';
     return;
   }
-  const c = e.target.closest('[data-code].row, [data-code].mini');
+  const c = e.target.closest('[data-code].row, [data-code].mini, [data-code].peek');
   if (c) { preview.classList.remove('show'); openCard(c.dataset.code); }
 });
 
@@ -297,6 +299,28 @@ for (const id of ['#role', '#players']) $(id).addEventListener('change', () => {
 $('#deck-text').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) check(); });
 $('#deck-link').addEventListener('keydown', e => { if (e.key === 'Enter') check(); });
 
+// --- Views ----------------------------------------------------------------
+function showView() {
+  const v = location.hash === '#check' ? 'check' : 'build';
+  $('#view-check').hidden = v !== 'check';
+  $('#view-build').hidden = v !== 'build';
+  $('#nav-check').toggleAttribute('aria-current', v === 'check');
+  $('#nav-build').toggleAttribute('aria-current', v === 'build');
+  if (v === 'check') $('#nav-check').setAttribute('aria-current', 'page'); else $('#nav-build').setAttribute('aria-current', 'page');
+  preview.classList.remove('show');
+}
+addEventListener('hashchange', showView);
+showView();
+
+function openInCheckup(text, role, players) {
+  setTab('paste');
+  $('#deck-text').value = text;
+  $('#role').value = role; $('#players').value = String(players);
+  location.hash = '#check';
+  check();
+  window.scrollTo({ top: 0 });
+}
+
 // --- Start ----------------------------------------------------------------
 (async () => {
   $('#deck-text').value = store.get('text') || SAMPLE_DECK;
@@ -310,6 +334,7 @@ $('#deck-link').addEventListener('keydown', e => { if (e.key === 'Enter') check(
     db = makeDb(await res.json());
     status('');
     if (store.get('tab') !== 'link') check();
+    initBuilder(db, { cardImg, esc, store, openInCheckup });
   } catch {
     status('Card data failed to load. Try refreshing the page.', true);
   }

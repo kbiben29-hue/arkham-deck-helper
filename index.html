@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Deck Checkup · Arkham Horror LCG</title>
+  <title>Arkham Deck Helper</title>
   <meta name="description" content="Paste an Arkham Horror: The Card Game deck and see where it's strong, where it's thin, and what to fix first.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -20,13 +20,19 @@
         <circle cx="32" cy="32" r="4.5" fill="var(--bg)"/>
       </svg>
       <div>
-        <h1>Deck Checkup</h1>
-        <p class="tagline">for Arkham Horror: The Card Game: paste a deck and see what it's missing before the Mythos finds out.</p>
+        <h1>Arkham Deck Helper</h1>
+        <p class="tagline">for Arkham Horror: The Card Game: build a deck from your collection, or check one before the Mythos finds its weak spots.</p>
       </div>
     </div>
+    <nav class="wrap views" aria-label="Tools">
+      <a href="#build" id="nav-build">Build a deck</a>
+      <a href="#check" id="nav-check">Check a deck</a>
+    </nav>
   </header>
 
-  <main class="wrap">
+  <main class="wrap" id="view-build" hidden></main>
+
+  <main class="wrap" id="view-check">
     <section class="panel input-panel" aria-label="Your deck">
       <div class="tabs" role="tablist">
         <button role="tab" id="tab-paste" aria-selected="true" aria-controls="pane-paste">Paste a deck list</button>

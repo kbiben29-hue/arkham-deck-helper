@@ -13,8 +13,10 @@ export function makeDb(data) {
       byName.get(key).push(c);
     }
   }
-  const packByName = new Map(Object.entries(data.packs).map(([code, name]) => [norm(name), code]));
-  return { byCode, byName, packs: data.packs, packByName, cards: data.cards };
+  const packs = Object.fromEntries(data.packs.map(p => [p.code, p.name]));
+  const packByName = new Map(data.packs.map(p => [norm(p.name), p.code]));
+  const packNamesLong = data.packs.map(p => p.name.toLowerCase()).sort((a, b) => b.length - a.length);
+  return { byCode, byName, packs, packNamesLong, packList: data.packs, cycles: data.cycles, packByName, cards: data.cards };
 }
 
 // Prefer the first printing that isn't a reprint.
@@ -57,13 +59,19 @@ export function parseText(db, text) {
     let count = 1, rest = line;
     if (m) { count = +m[1]; rest = m[2]; }
     let xp, pack;
-    // trailing "(Pack name)" or "[Pack name]"
+    // trailing "(Pack name)" (pack names may contain brackets themselves) or "(2)" for level
     for (let i = 0; i < 3; i++) {
+      const low = rest.toLowerCase().trimEnd();
+      const packHit = db.packNamesLong.find(n => low.endsWith(`(${n})`) || low.endsWith(`[${n}]`));
+      if (packHit) {
+        pack = db.packByName.get(norm(packHit));
+        rest = rest.trimEnd().slice(0, -(packHit.length + 2)).trimEnd();
+        continue;
+      }
       const t = rest.match(/\s*[(\[]([^)\]]+)[)\]]\s*$/);
       if (!t) break;
       const inner = t[1].trim();
       if (/^\d$/.test(inner)) xp = +inner;
-      else if (db.packByName.has(norm(inner))) pack = db.packByName.get(norm(inner));
       else if (/^(xp|level)\s*\d$/i.test(inner)) xp = +inner.replace(/\D/g, '');
       else break;
       rest = rest.slice(0, t.index);

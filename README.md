@@ -1,6 +1,9 @@
-# Arkham Deck Helper: Deck Checkup
+# Arkham Deck Helper
 
-Paste a deck (or an ArkhamDB link) and get a checkup: what the deck does well, where it's thin, and what to fix first.
+Two tools for Arkham Horror: The Card Game:
+
+- **Build a deck**: tick the products you own (every Chapter One and Chapter Two release, standalone scenarios, parallels, novellas and promos), choose an investigator or a role, then let it build a full level-0 deck or walk you through picking cards step by step with a live checkup.
+- **Check a deck**: paste a deck (or an ArkhamDB link) and see what it does well, where it's thin, and what to fix first.
 
 ## What it checks
 
@@ -30,7 +33,9 @@ node scripts/build-cards.mjs ../arkhamdb-json-data
 
 - `js/parse.js`: reads pasted text, ArkhamDB JSON and ArkhamDB links.
 - `js/analyze.js`: all grading, odds and rules checks. It has no UI code, so the planned **guided builder** and **upgrade planner** can reuse it.
-- `js/app.js`: rendering, card previews and input handling.
+- `js/build.js`: collection handling, card scoring, auto-build and the walk-through steps.
+- `js/builder-ui.js`: the Build a deck screens.
+- `js/app.js`: the Check a deck screen, card previews and page routing.
 - `js/sample.js`: the sample deck shown on first visit.
 
 Card images load from ArkhamDB. This is an unofficial fan tool; Arkham Horror: The Card Game is © Fantasy Flight Games.
