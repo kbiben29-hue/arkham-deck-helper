@@ -276,18 +276,26 @@ details.orig summary { cursor: pointer; color: var(--muted); font-size: 14px; pa
 .mini-h { font-family: "Source Sans 3", sans-serif; font-weight: 700; font-size: 15px; color: var(--muted); margin: 14px 0 6px; }
 .bag-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 0 28px; }
 .bag-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); }
-.tok { width: 34px; height: 34px; border-radius: 50%; display: inline-grid; place-items: center; font-weight: 800; font-size: 14px; flex: none;
-  background: radial-gradient(circle at 35% 30%, #4a4f55, #1d2023); color: #f1ead9; border: 2px solid #8b8576; font-variant-numeric: tabular-nums; }
-.tok.big { width: 64px; height: 64px; font-size: 24px; border-width: 3px; }
-.tok-skull { background: radial-gradient(circle at 35% 30%, #6b2a2a, #2a0f0f); }
-.tok-cultist { background: radial-gradient(circle at 35% 30%, #2d5a3a, #0f2416); }
-.tok-tablet { background: radial-gradient(circle at 35% 30%, #2c4a6b, #0f1c2a); }
-.tok-elder_thing { background: radial-gradient(circle at 35% 30%, #5a3b6b, #1f1229); }
-.tok-auto_fail { background: radial-gradient(circle at 35% 30%, #c0392b, #5a120c); border-color: #f0a197; }
-.tok-elder_sign { background: radial-gradient(circle at 35% 30%, #3fb7a0, #0e4a3f); border-color: #b6efe2; }
-.tok-bless { background: radial-gradient(circle at 35% 30%, #f4e4a8, #b08a2e); color: #2a1f05; border-color: #fff3c4; }
-.tok-curse { background: radial-gradient(circle at 35% 30%, #3a2a4a, #0d0614); border-color: #7b5b98; }
-.tok-frost { background: radial-gradient(circle at 35% 30%, #cfe9f6, #5a8aa6); color: #0d2330; border-color: #eaf7ff; }
+.tok { --tok-bg: #23272b; width: 36px; height: 36px; border-radius: 50%; display: inline-grid; place-items: center; flex: none; position: relative;
+  background: radial-gradient(circle at 34% 28%, color-mix(in srgb, var(--tok-bg) 70%, #fff 30%), var(--tok-bg) 55%, color-mix(in srgb, var(--tok-bg) 75%, #000) 100%);
+  color: #efe6cf;
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,.14), inset 0 0 0 4px rgba(0,0,0,.35), inset 0 -4px 7px rgba(0,0,0,.55), 0 2px 4px rgba(0,0,0,.35); }
+.tok::after { content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle at 70% 80%, rgba(255,255,255,.06), transparent 45%), repeating-radial-gradient(circle at 30% 40%, rgba(255,255,255,.025) 0 1px, transparent 1px 3px); }
+.tok svg { width: 68%; height: 68%; filter: drop-shadow(0 1px 0 rgba(0,0,0,.5)); }
+.tok b { font-family: "IM Fell English", Georgia, serif; font-weight: 700; font-size: 15px; letter-spacing: -.5px; text-shadow: 0 1px 0 rgba(0,0,0,.6); line-height: 1; }
+.tok.big { width: 72px; height: 72px; }
+.tok.big b { font-size: 30px; }
+.tok-num { --tok-bg: #2b2f33; }
+.tok-skull { --tok-bg: #5c2323; }
+.tok-cultist { --tok-bg: #24503a; }
+.tok-tablet { --tok-bg: #24415f; }
+.tok-elder_thing { --tok-bg: #4c3160; }
+.tok-auto_fail { --tok-bg: #8f2318; color: #ffe2d6; }
+.tok-elder_sign { --tok-bg: #13675a; color: #e6fff6; }
+.tok-bless { --tok-bg: #c9a447; color: #fffbe8; }
+.tok-curse { --tok-bg: #2a1838; color: #d8c2ee; }
+.tok-frost { --tok-bg: #6f9fbd; color: #f2fbff; }
 .big-btn { min-height: 52px; font-size: 18px; padding: 0 28px; }
 .drawn { margin-top: 14px; }
 .chain { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; animation: pop .35s ease-out; }
@@ -298,7 +306,7 @@ details.orig summary { cursor: pointer; color: var(--muted); font-size: 14px; pa
 .result.bad { color: var(--missing); }
 .hist { display: flex; flex-wrap: wrap; gap: 6px; }
 .hchip { display: inline-flex; align-items: center; gap: 2px; padding: 2px 8px 2px 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); }
-.hchip .tok { width: 24px; height: 24px; font-size: 11px; border-width: 1px; }
+.hchip .tok { width: 26px; height: 26px; } .hchip .tok b { font-size: 11px; }
 .hchip small { margin-left: 4px; font-weight: 700; }
 .hchip.bad small { color: var(--missing); }
 .odds-big { font-family: "IM Fell English", serif; font-size: 26px; margin: 12px 0 0; }

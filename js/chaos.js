@@ -5,6 +5,18 @@ const SYMBOLS = ['skull', 'cultist', 'tablet', 'elder_thing'];
 const SPECIAL = ['auto_fail', 'elder_sign', 'bless', 'curse', 'frost'];
 const ALL = [...NUMS, ...SYMBOLS, ...SPECIAL];
 const LABEL = { skull: 'Skull', cultist: 'Cultist', tablet: 'Tablet', elder_thing: 'Elder Thing', auto_fail: 'Auto-fail', elder_sign: 'Elder Sign', bless: 'Bless', curse: 'Curse', frost: 'Frost' };
+// Original token glyphs (drawn for this site, 32×32, in the token's ink colour).
+const GLYPH = {
+  skull: '<path d="M16 4c-6.2 0-10.5 4.4-10.5 10 0 3.6 1.7 6.1 4 7.5V26c0 1 .8 1.8 1.8 1.8h9.4c1 0 1.8-.8 1.8-1.8v-4.5c2.3-1.4 4-3.9 4-7.5C26.5 8.4 22.2 4 16 4z"/><g fill="var(--tok-bg,#1d2023)"><ellipse cx="11.6" cy="14.6" rx="2.8" ry="3.2"/><ellipse cx="20.4" cy="14.6" rx="2.8" ry="3.2"/><path d="M16 18.2l-1.7 3h3.4z"/><rect x="12.6" y="24" width="1.3" height="3.8"/><rect x="15.35" y="24" width="1.3" height="3.8"/><rect x="18.1" y="24" width="1.3" height="3.8"/></g>',
+  cultist: '<path d="M16 3.5c-5 0-8.5 5.2-8.8 11.4L5.5 28.5h21L24.8 14.9C24.5 8.7 21 3.5 16 3.5z"/><path fill="var(--tok-bg,#1d2023)" d="M16 9c-3 0-5 3.2-5 7.2 0 2.7 1.3 5 2.8 6.3h4.4c1.5-1.3 2.8-3.6 2.8-6.3C21 12.2 19 9 16 9z"/><circle cx="14.2" cy="16.5" r="1" /><circle cx="17.8" cy="16.5" r="1"/>',
+  tablet: '<path d="M9 4h14a2 2 0 0 1 2 2v20.5a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><g fill="none" stroke="var(--tok-bg,#1d2023)" stroke-width="1.6" stroke-linecap="round"><path d="M11 9.5h4M17.5 9.5H21M11 13.5h10M11 17.5h3.5M16.5 17.5H21M11 21.5h6"/><path d="M19 21l2 2.5" /></g>',
+  elder_thing: '<g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M16 16c0-4 1-8 0-12"/><path d="M16 16c3.6-1.5 7.5-3 11-2"/><path d="M16 16c2.5 3 4.6 6.5 5 11"/><path d="M16 16c-2.5 3-4.6 6.5-5 11"/><path d="M16 16c-3.6-1.5-7.5-3-11-2"/></g><circle cx="16" cy="16" r="4.6"/><circle cx="16" cy="16" r="1.6" fill="var(--tok-bg,#1d2023)"/>',
+  auto_fail: '<path d="M7.5 6.5l4 0 4.5 6 4.5-6h4l-6.4 9 6.9 10h-4.1L16 19.2l-4.9 6.3H7l6.9-10z"/><path fill="none" stroke="var(--tok-bg,#5a120c)" stroke-width="1" d="M16 3v4M16 25v4"/>',
+  elder_sign: '<path d="M16 3.5l3 8.6 9 .2-7.2 5.5 2.6 8.7L16 21.3l-7.4 5.2 2.6-8.7L4 12.3l9-.2z"/><circle cx="16" cy="15.8" r="3" fill="var(--tok-bg,#0e4a3f)"/><circle cx="16" cy="15.8" r="1.2"/>',
+  bless: '<circle cx="16" cy="16" r="5.5"/><g stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M16 3.5v4M16 24.5v4M3.5 16h4M24.5 16h4M7.2 7.2l2.8 2.8M22 22l2.8 2.8M7.2 24.8l2.8-2.8M22 10l2.8-2.8"/></g>',
+  curse: '<path d="M21.5 5.5A11 11 0 1 0 26.5 22 9 9 0 1 1 21.5 5.5z"/><path d="M12 25.5c0 1.6-1 2.8-1 2.8s-1-1.2-1-2.8a1 1 0 0 1 2 0z"/>',
+  frost: '<g stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"><path d="M16 3.5v25M5.2 9.8l21.6 12.4M5.2 22.2l21.6-12.4"/><path d="M12.8 5.8L16 8.6l3.2-2.8M12.8 26.2L16 23.4l3.2 2.8M5.4 14.3l3.9-.9-1.3-3.9M26.6 17.7l-3.9.9 1.3 3.9M8 22.4l1.3-3.9-3.9-.9M24 9.6l-1.3 3.9 3.9.9"/></g>',
+};
 const SHORT = { skull: 'Sk', cultist: 'Cu', tablet: 'Ta', elder_thing: 'ET', auto_fail: '✕', elder_sign: '★', bless: 'B', curse: 'C', frost: 'Fr' };
 
 // Read a symbol's effect text: "-2. If you fail…" → { value: -2 }, "-X. X is…" → X, "Reveal another token…" → redraw.
@@ -137,7 +149,8 @@ export function initChaos(camps, bags, ui) {
   // --- Rendering --------------------------------------------------------------
   const tokenBadge = (k, big = false) => {
     const sym = !NUMS.includes(k);
-    return `<span class="tok ${sym ? `tok-${k}` : 'tok-num'} ${big ? 'big' : ''}" title="${esc(LABEL[k] || k)}">${sym ? SHORT[k] : k}</span>`;
+    const inner = sym ? `<svg viewBox="0 0 32 32" aria-hidden="true" fill="currentColor">${GLYPH[k]}</svg>` : `<b>${k.replace('-', '−')}</b>`;
+    return `<span class="tok ${sym ? `tok-${k}` : 'tok-num'} ${big ? 'big' : ''}" role="img" aria-label="${esc(LABEL[k] || k)}" title="${esc(LABEL[k] || k)}">${inner}</span>`;
   };
   const fmt = n => n > 0 ? `+${n}` : String(n);
   const pctTxt = x => `${Math.round(x * 100)}%`;
