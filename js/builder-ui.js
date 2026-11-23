@@ -315,9 +315,10 @@ export function initBuilder(db, camps, ui) {
         <p class="sub">Free keys have daily limits, and Google may use what you send on the free tier to improve its products. It's only deck info, but worth knowing.</p>`;
     return `<div class="panel claude">
       <h3 style="font-size:26px">Ask AI for more ideas</h3>
-      <h4 class="ai-h">Gemini (free key, works on any device)</h4>
+      <p class="sub" style="margin:4px 0 0">${S.geminiKey ? 'One tap: Gemini reads your investigator, campaign and cards, and new decks appear above.' : 'One-time setup: add a free Gemini key. After that it\'s one tap, on any device.'}</p>
       ${gem}
-      <h4 class="ai-h">Claude in Chrome (uses your Claude plan)</h4>
+      ${S.claudeMsg ? `<p class="status ${S.claudeMsg.startsWith('Built') ? '' : 'err'}">${esc(S.claudeMsg)}</p>` : ''}
+      <details class="ai-alt" ${S.claudeText && !S.approaches.some(a => a.via === 'Gemini') ? 'open' : ''}><summary class="ai-h">Or use Claude in Chrome instead (Mac only, uses your Claude plan)</summary>
       <p style="margin:6px 0">On your Mac in Chrome, open the <b>Claude side panel</b> on this page and say: <i>“Read the brief on this page and add your approaches.”</i> Claude writes its ideas into the box below and clicks the button. The page turns each idea into a legal deck from your collection.</p>
       <details><summary class="sub">Brief for Claude (${S.builder ? S.builder.pool.length : 0} cards you own that ${esc(S.builder?.inv.name || 'this investigator')} can use)</summary>
         <pre id="claude-brief" class="brief">${esc(brief)}</pre></details>
@@ -325,8 +326,8 @@ export function initBuilder(db, camps, ui) {
       <label class="field-label" for="claude-plan" style="margin-top:12px">Claude's approaches (Gemini's answer lands here too)</label>
       <textarea id="claude-plan" rows="6" placeholder='{"approaches":[{"name":"…","plan":"…","why":"…","key_cards":["…"],"avoid":[]}]}'>${esc(S.claudeText)}</textarea>
       <div class="result-actions"><button class="primary" id="claude-build" data-act="claude-build">Build Claude's approaches</button></div>
-      ${S.claudeMsg ? `<p class="status ${S.claudeMsg.startsWith('Built') ? '' : 'err'}">${esc(S.claudeMsg)}</p>` : ''}
       <p class="sub">No Chrome handy? Copy the brief into the Claude app, then paste its reply into the box above.</p>
+      </details>
     </div>`;
   }
 
