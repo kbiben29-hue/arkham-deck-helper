@@ -2,6 +2,7 @@ import { makeDb, parseAny, parseJson, parseLink, fetchArkhamDb } from './parse.j
 import { analyze, ROLES } from './analyze.js';
 import { SAMPLE_DECK } from './sample.js';
 import { initBuilder } from './builder-ui.js';
+import { initChaos } from './chaos.js';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -300,13 +301,14 @@ $('#deck-text').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.m
 $('#deck-link').addEventListener('keydown', e => { if (e.key === 'Enter') check(); });
 
 // --- Views ----------------------------------------------------------------
+const VIEWS = ['build', 'check', 'bag'];
 function showView() {
-  const v = location.hash === '#check' ? 'check' : 'build';
-  $('#view-check').hidden = v !== 'check';
-  $('#view-build').hidden = v !== 'build';
-  $('#nav-check').toggleAttribute('aria-current', v === 'check');
-  $('#nav-build').toggleAttribute('aria-current', v === 'build');
-  if (v === 'check') $('#nav-check').setAttribute('aria-current', 'page'); else $('#nav-build').setAttribute('aria-current', 'page');
+  const h = location.hash.slice(1);
+  const v = VIEWS.includes(h) ? h : 'build';
+  for (const name of VIEWS) {
+    $(`#view-${name}`).hidden = name !== v;
+    if (name === v) $(`#nav-${name}`).setAttribute('aria-current', 'page'); else $(`#nav-${name}`).removeAttribute('aria-current');
+  }
   preview.classList.remove('show');
 }
 addEventListener('hashchange', showView);
@@ -356,6 +358,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) chec
     if (store.get('tab') !== 'link') check();
     const camps = await (await fetch(`data/campaigns.json?v=${window.APP_VERSION || ''}`)).json();
     initBuilder(db, camps, { cardImg, esc, store, openInCheckup });
+    initChaos(camps, { esc, store });
   } catch {
     status('Card data failed to load. Try refreshing the page.', true);
   }

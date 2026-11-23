@@ -271,3 +271,46 @@ details.orig summary { cursor: pointer; color: var(--muted); font-size: 14px; pa
 .coll-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 2px 6px 2px 14px; }
 .linkish.small { font-size: 14px; min-height: 36px; padding: 0 8px; }
 .coll-setup h2 { font-size: clamp(24px, 2.8vw, 32px); }
+
+/* Chaos bag */
+.mini-h { font-family: "Source Sans 3", sans-serif; font-weight: 700; font-size: 15px; color: var(--muted); margin: 14px 0 6px; }
+.bag-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 0 28px; }
+.bag-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.tok { width: 34px; height: 34px; border-radius: 50%; display: inline-grid; place-items: center; font-weight: 800; font-size: 14px; flex: none;
+  background: radial-gradient(circle at 35% 30%, #4a4f55, #1d2023); color: #f1ead9; border: 2px solid #8b8576; font-variant-numeric: tabular-nums; }
+.tok.big { width: 64px; height: 64px; font-size: 24px; border-width: 3px; }
+.tok-skull { background: radial-gradient(circle at 35% 30%, #6b2a2a, #2a0f0f); }
+.tok-cultist { background: radial-gradient(circle at 35% 30%, #2d5a3a, #0f2416); }
+.tok-tablet { background: radial-gradient(circle at 35% 30%, #2c4a6b, #0f1c2a); }
+.tok-elder_thing { background: radial-gradient(circle at 35% 30%, #5a3b6b, #1f1229); }
+.tok-auto_fail { background: radial-gradient(circle at 35% 30%, #c0392b, #5a120c); border-color: #f0a197; }
+.tok-elder_sign { background: radial-gradient(circle at 35% 30%, #3fb7a0, #0e4a3f); border-color: #b6efe2; }
+.tok-bless { background: radial-gradient(circle at 35% 30%, #f4e4a8, #b08a2e); color: #2a1f05; border-color: #fff3c4; }
+.tok-curse { background: radial-gradient(circle at 35% 30%, #3a2a4a, #0d0614); border-color: #7b5b98; }
+.tok-frost { background: radial-gradient(circle at 35% 30%, #cfe9f6, #5a8aa6); color: #0d2330; border-color: #eaf7ff; }
+.big-btn { min-height: 52px; font-size: 18px; padding: 0 28px; }
+.drawn { margin-top: 14px; }
+.chain { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; animation: pop .35s ease-out; }
+.chain .plus { color: var(--muted); font-size: 14px; }
+@keyframes pop { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .chain { animation: none; } }
+.result { font-family: "IM Fell English", serif; font-size: 28px; margin: 10px 0 4px; }
+.result.bad { color: var(--missing); }
+.hist { display: flex; flex-wrap: wrap; gap: 6px; }
+.hchip { display: inline-flex; align-items: center; gap: 2px; padding: 2px 8px 2px 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); }
+.hchip .tok { width: 24px; height: 24px; font-size: 11px; border-width: 1px; }
+.hchip small { margin-left: 4px; font-weight: 700; }
+.hchip.bad small { color: var(--missing); }
+.odds-big { font-family: "IM Fell English", serif; font-size: 26px; margin: 12px 0 0; }
+.odds-big b { font-size: 44px; font-family: "Source Sans 3", sans-serif; }
+.odds-table { display: grid; gap: 6px; }
+.odds-row { display: grid; grid-template-columns: 130px minmax(0, 1fr) 48px; gap: 10px; align-items: center; font-size: 14.5px; padding: 2px 4px; border-radius: 6px; }
+.odds-row.now { background: var(--bg2); font-weight: 700; }
+.odds-row b { text-align: right; font-variant-numeric: tabular-nums; }
+.sym-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 12px; }
+.sym-row { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg); }
+.sym-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.inline { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); }
+.inline input[type=number] { width: 72px; padding: 6px 8px; min-height: 40px; }
+.inline.chk input { width: 20px; height: 20px; accent-color: var(--accent); }
+.fx { margin: 8px 0 0; }

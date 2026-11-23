@@ -28,10 +28,13 @@
     <nav class="wrap views" aria-label="Tools">
       <a href="#build" id="nav-build">Build a deck</a>
       <a href="#check" id="nav-check">Check a deck</a>
+      <a href="#bag" id="nav-bag">Chaos bag</a>
     </nav>
   </header>
 
   <main class="wrap" id="view-build" hidden></main>
+
+  <main class="wrap" id="view-bag" hidden></main>
 
   <main class="wrap" id="view-check">
     <section class="panel input-panel" aria-label="Your deck">
@@ -86,7 +89,7 @@
     // Always load the newest version: look up the current version number (never cached),
     // then load every script and the stylesheet with that number so phones can't serve stale copies.
     (function () {
-      var mods = ['app', 'parse', 'analyze', 'sample', 'builder-ui', 'build', 'campaign', 'engines', 'claude', 'gemini'];
+      var mods = ['app', 'parse', 'analyze', 'sample', 'builder-ui', 'build', 'campaign', 'engines', 'claude', 'gemini', 'chaos'];
       function start(v) {
         window.APP_VERSION = String(v);
         var map = { imports: {} };

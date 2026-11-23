@@ -71,6 +71,13 @@ fs.writeFileSync('data/cards.json', JSON.stringify({ packs: packList, cycles: cy
 const enc = full.filter(c => c.encounter_code && c.faction_code === 'mythos' || c.encounter_code && ['enemy', 'treachery', 'location', 'scenario'].includes(c.type_code));
 const plain = t => (t || '').replace(/<[^>]+>/g, '').toLowerCase();
 const KEYWORDS = ['hunter', 'retaliate', 'alert', 'aloof', 'elusive', 'massive', 'patrol', 'swarming', 'prey'];
+// Chaos token effects from a scenario reference card, keeping the original capitalisation.
+function tokenLines(t) {
+  const out = {};
+  const txt = (t || '').replace(/<[^>]+>/g, '');
+  for (const m of txt.matchAll(/\[(skull|cultist|tablet|elder_thing)\]:?\s*([^\n]*)/g)) out[m[1]] = m[2].trim();
+  return Object.keys(out).length ? out : null;
+}
 function profile(cards) {
   const p = { tests: { willpower: 0, agility: 0, intellect: 0, combat: 0 }, treacheries: 0, enemies: 0, fight: [], evade: [], hp: [],
     dmg: 0, hor: 0, kw: Object.fromEntries(KEYWORDS.map(k => [k, 0])), shroud: [], locations: 0, doom: 0, curse: 0, bless: 0, frost: 0, flood: 0, poison: 0, surge: 0 };
@@ -133,6 +140,7 @@ function profile(cards) {
     surge: +(p.surge / Math.max(1, p.treacheries)).toFixed(2),
     threats, treacheries: tre,
     tokens: scenCard ? plain(scenCard.text).replace(/^easy \/ standard\s*/, '').slice(0, 420) : null,
+    tokenText: scenCard ? { standard: tokenLines(scenCard.text), hard: tokenLines(scenCard.back_text) } : null,
   };
 }
 
