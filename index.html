@@ -2,13 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-cache">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Arkham Deck Helper</title>
   <meta name="description" content="Paste an Arkham Horror: The Card Game deck and see where it's strong, where it's thin, and what to fix first.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English+SC&family=IM+Fell+English:ital@0;1&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css" id="main-css">
 </head>
 <body>
   <header class="masthead">
@@ -81,6 +82,24 @@
   <div id="preview" class="hover-preview" aria-hidden="true"></div>
   <dialog id="card-dialog" class="card-dialog"></dialog>
 
-  <script type="module" src="js/app.js?v=5"></script>
+  <script>
+    // Always load the newest version: look up the current version number (never cached),
+    // then load every script and the stylesheet with that number so phones can't serve stale copies.
+    (function () {
+      var mods = ['app', 'parse', 'analyze', 'sample', 'builder-ui', 'build', 'campaign', 'engines', 'claude', 'gemini'];
+      function start(v) {
+        window.APP_VERSION = String(v);
+        var map = { imports: {} };
+        mods.forEach(function (m) { map.imports['./js/' + m + '.js'] = './js/' + m + '.js?v=' + v; });
+        var im = document.createElement('script'); im.type = 'importmap'; im.textContent = JSON.stringify(map);
+        document.head.appendChild(im);
+        document.getElementById('main-css').href = 'css/style.css?v=' + v;
+        var s = document.createElement('script'); s.type = 'module'; s.src = 'js/app.js?v=' + v;
+        document.body.appendChild(s);
+      }
+      fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.json(); })
+        .then(function (j) { start(j.version); }).catch(function () { start(Date.now()); });
+    })();
+  </script>
 </body>
 </html>

@@ -323,10 +323,10 @@ function openInCheckup(text, role, players) {
 
 // --- New version check ------------------------------------------------------
 // GitHub Pages caches files for a few minutes. Check quietly for a newer version and offer a one-tap reload.
-let loadedVersion = null;
+let loadedVersion = window.APP_VERSION || null;
 async function checkVersion() {
   try {
-    const v = (await (await fetch('version.json', { cache: 'no-store' })).json()).version;
+    const v = (await (await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' })).json()).version;
     if (!loadedVersion) loadedVersion = v;
     else if (v !== loadedVersion && !document.querySelector('#update-bar')) {
       const bar = document.createElement('div');
@@ -350,11 +350,11 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) chec
   if (store.get('tab') === 'link') setTab('link');
   status('Loading card data…');
   try {
-    const res = await fetch('data/cards.json', { cache: 'no-cache' });
+    const res = await fetch(`data/cards.json?v=${window.APP_VERSION || ''}`);
     db = makeDb(await res.json());
     status('');
     if (store.get('tab') !== 'link') check();
-    const camps = await (await fetch('data/campaigns.json', { cache: 'no-cache' })).json();
+    const camps = await (await fetch(`data/campaigns.json?v=${window.APP_VERSION || ''}`)).json();
     initBuilder(db, camps, { cardImg, esc, store, openInCheckup });
   } catch {
     status('Card data failed to load. Try refreshing the page.', true);
