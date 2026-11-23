@@ -267,3 +267,7 @@ details.orig summary { cursor: pointer; color: var(--muted); font-size: 14px; pa
 .chip-btn[aria-pressed=true] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .intel { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 14px 24px; margin-top: 14px; padding: 14px 16px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); }
 .intel ul { margin: 0; padding-left: 20px; display: grid; gap: 3px; font-size: 15px; }
+.coll-bar { display: flex; justify-content: flex-end; margin-top: 14px; }
+.coll-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 2px 6px 2px 14px; }
+.linkish.small { font-size: 14px; min-height: 36px; padding: 0 8px; }
+.coll-setup h2 { font-size: clamp(24px, 2.8vw, 32px); }

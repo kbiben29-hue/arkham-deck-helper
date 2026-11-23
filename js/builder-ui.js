@@ -134,7 +134,7 @@ export function initBuilder(db, camps, ui) {
     const summary = ownedList.length
       ? `You own ${ownedList.length} product${ownedList.length === 1 ? '' : 's'} with ${invs.length} investigator${invs.length === 1 ? '' : 's'}.`
       : 'Tick everything you own. Your picks are saved in this browser.';
-    if (!S.editing) return `<div class="summary-line"><p style="margin:0">${summary}</p><button class="linkish" data-act="edit-coll">Edit collection</button></div>`;
+    if (!S.editing) return `<div class="coll-chip"><span>My collection: ${ownedList.length} product${ownedList.length === 1 ? '' : 's'}, ${invs.length} investigators</span><button class="linkish small" data-act="edit-coll">Edit</button></div>`;
     const body = groups.map(g => `
       <h3 class="coll-chapter">${g.chapter}</h3>
       ${g.items.map(item => {
@@ -150,9 +150,9 @@ export function initBuilder(db, camps, ui) {
         } else inner = list.map(p => packRow(p, item)).join('');
         return `<div class="cycle"><h3>${esc(item.title)} <button class="ghost" data-all="${codes}">All</button></h3>${inner}</div>`;
       }).join('')}`).join('');
-    return `<p style="margin:0">${summary} The 2026 Investigator Expansions count as owning their cycle's original packs.</p>
+    return `<p style="margin:0">${ownedList.length ? summary : ''} The 2026 Investigator Expansions count as owning their cycle's original packs.</p>
       <div class="coll-tools"><button class="ghost" data-act="all">Select everything</button><button class="ghost" data-act="none">Clear</button>
-      ${ownedList.length ? '<button class="primary" data-act="done-coll">Done</button>' : ''}</div>
+      ${ownedList.length ? '<button class="primary" data-act="done-coll">Save and continue</button>' : ''}</div>
       <div class="coll-grid">${body}</div>`;
   }
 
@@ -439,10 +439,12 @@ export function initBuilder(db, camps, ui) {
     else if (S.view === 'result' && S.builder) out = deckHtml(S.builder) + claudeHtml();
     else if (S.view === 'guide' && S.builder) out = guideHtml(S.builder);
     root.innerHTML = `
-      <section class="panel b-step"><h2><span class="num">1</span> Your collection</h2>${collectionHtml()}</section>
-      ${!S.editing ? `<section class="panel b-step"><h2><span class="num">2</span> What are you playing?</h2>${playingHtml()}</section>
-      <section class="panel b-step"><h2><span class="num">3</span> Who are you building for?</h2>${whoHtml(invs)}</section>
-      <section class="panel b-step"><h2><span class="num">4</span> How do you want to build it?</h2>
+      ${S.editing ? `<section class="panel b-step coll-setup"><h2>${Object.values(S.owned).some(Boolean) ? 'Edit your collection' : 'First, what do you own?'}</h2>
+        <p class="sub" style="margin:4px 0 10px">${Object.values(S.owned).some(Boolean) ? 'Changes are saved on this device.' : 'A one-time setup. Tick what you own and it\'s remembered on this device. You can change it any time from the small "Edit" link at the top.'}</p>
+        ${collectionHtml()}</section>` : `<div class="coll-bar">${collectionHtml()}</div>`}
+      ${!S.editing ? `<section class="panel b-step"><h2><span class="num">1</span> What are you playing?</h2>${playingHtml()}</section>
+      <section class="panel b-step"><h2><span class="num">2</span> Who are you building for?</h2>${whoHtml(invs)}</section>
+      <section class="panel b-step"><h2><span class="num">3</span> How do you want to build it?</h2>
         <p class="field-label" style="margin:0 0 6px">How far outside the box?</p>
         <div class="seg" role="group" aria-label="How far outside the box">${SPICE.map(([n, d], i) => `<button data-spice="${i}" aria-pressed="${S.spice === i}" title="${d}">${n}</button>`).join('')}</div>
         <p class="sub" style="margin:6px 0 14px">${SPICE[S.spice][1]}.</p>
