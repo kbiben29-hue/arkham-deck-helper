@@ -1,7 +1,7 @@
 // "Build a deck": collection picker, investigator or role, then auto-build or a step-by-step walk-through.
 import { Builder, STEPS, BUCKETS, REPRINTS, ownedInvestigators, roleFit, autoRole, playerCardCount, identity, buildApproaches } from './build.js';
 import { choiceOptions, cardRoles, ROLES } from './analyze.js';
-import { blendProfile, pressures, findings } from './campaign.js';
+import { blendProfile, pressures, findings, threatLines } from './campaign.js';
 import { buildBrief, parseReply } from './claude.js';
 import { askGemini } from './gemini.js';
 
@@ -55,7 +55,8 @@ export function initBuilder(db, camps, ui) {
     const c = campaignBy[S.campaign];
     const sc = c?.scenarios.find(x => x.code === S.scenario) || null;
     const prof = c ? blendProfile(c, sc) : null;
-    return { c, sc, prof, pr: prof ? pressures(prof, camps.average) : null, notes: prof ? findings(prof, camps.average) : [] };
+    return { c, sc, prof, pr: prof ? pressures(prof, camps.average) : null, notes: prof ? findings(prof, camps.average) : [],
+      name: sc ? sc.name : c?.name || '', details: prof ? threatLines(prof) : null };
   }
   function playingHtml() {
     const { c, notes } = playing();
@@ -66,15 +67,27 @@ export function initBuilder(db, camps, ui) {
       ['Return to…', camps.campaigns.filter(x => x.group === 'return')],
       ['Standalone scenarios', camps.campaigns.filter(x => x.chapter === 1 && x.group === 'standalone')],
     ].filter(([, l]) => l.length);
-    return `<div class="who-row">
-        <label>Campaign or scenario<select data-campaign>
-          <option value="">Nothing specific (general deck)</option>
-          ${groupsC.map(([g, l]) => `<optgroup label="${g}">${l.map(x => `<option value="${x.code}" ${x.code === S.campaign ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</optgroup>`).join('')}
-        </select></label>
-        ${c && c.scenarios.length > 1 ? `<label>Scenario<select data-scenario><option value="">Whole campaign</option>${c.scenarios.map(x => `<option value="${x.code}" ${x.code === S.scenario ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>` : ''}
+    const { sc, details, name } = playing();
+    const scen = c && c.scenarios.length > 1 ? `<p class="field-label" style="margin:14px 0 6px">Which scenario are you about to play?</p>
+      <div class="chips">${[{ code: '', name: 'Whole campaign' }, ...c.scenarios].map(x => `<button class="chip-btn" data-scen="${x.code}" aria-pressed="${x.code === S.scenario}">${esc(x.name)}</button>`).join('')}</div>` : '';
+    const intel = c ? `<div class="intel">
+        <div><p class="sub" style="margin:0 0 4px">What ${esc(name)} throws at you (from its encounter cards):</p>
+          <ul>${notes.map(n => `<li>${esc(n)}</li>`).join('')}${!sc && c.note ? `<li>${esc(c.note)}</li>` : ''}</ul></div>
+        ${details?.threats?.length ? `<div><p class="sub" style="margin:0 0 4px">Biggest threats</p><ul>${details.threats.map(t => `<li>${esc(t)}</li>`).join('')}</ul>
+          ${details.treacheries?.length ? `<p class="sub" style="margin:8px 0 4px">Most common treacheries</p><ul>${details.treacheries.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}</div>` : ''}
       </div>
-      ${c ? `<div class="findings"><p class="sub" style="margin:10px 0 4px">What this ${S.scenario ? 'scenario' : 'campaign'} throws at you, worked out from its encounter cards:</p>
-        <ul>${notes.map(n => `<li>${esc(n)}</li>`).join('')}${c.note ? `<li>${esc(c.note)}</li>` : ''}</ul></div>` : '<p class="sub" style="margin:10px 0 0">Pick what you\'re playing and decks will be tuned to it. Leave it blank for an all-purpose deck.</p>'}`;
+      <p class="sub" style="margin:10px 0 0">Card picks lean hardest on this. Each card's reason starts with “For ${esc(name)}” when it was picked for what this ${sc ? 'scenario' : 'campaign'} throws at you.</p>` : '';
+    return `<p style="margin:0 0 10px">This is the biggest factor in which cards get picked, so choose the campaign and, if you can, the exact scenario you're about to play.</p>
+      <div class="who-row">
+        <label>Campaign, Return to box or standalone<select data-campaign>
+          <option value="">Choose what you're playing…</option>
+          ${groupsC.map(([g, l]) => `<optgroup label="${g}">${l.map(x => `<option value="${x.code}" ${x.code === S.campaign ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</optgroup>`).join('')}
+          <option value="" disabled>──────────</option>
+          <option value="__none" ${S.campaign === '__none' ? 'selected' : ''}>Nothing specific (all-purpose deck)</option>
+        </select></label>
+      </div>
+      ${scen}${intel}
+      ${!c && S.campaign !== '__none' ? '<p class="status err" style="margin-top:8px">Pick what you\'re playing first. It decides which cards are worth the most.</p>' : ''}`;
   }
 
   // ---------- Collection ----------
@@ -192,7 +205,8 @@ export function initBuilder(db, camps, ui) {
     return new Builder(db, baseOpts(inv, role));
   }
   function baseOpts(inv, role) {
-    return { inv, owned: S.owned, role, players: S.players, choices: { ...S.choices }, pr: playing().pr, spice: S.spice, seed: S.seed };
+    const pl = playing();
+    return { inv, owned: S.owned, role, players: S.players, choices: { ...S.choices }, pr: pl.pr, playingName: pl.name, spice: S.spice, seed: S.seed };
   }
   function makeApproaches() {
     const invs = ownedInvestigators(db, S.owned);
@@ -305,8 +319,8 @@ export function initBuilder(db, camps, ui) {
   }
 
   function claudeHtml() {
-    const { c, sc, notes } = playing();
-    const brief = S.builder ? buildBrief({ db, builder: S.builder, campaign: c, scenario: sc, findings: notes, spice: S.spice }) : '';
+    const { c, sc, notes, details } = playing();
+    const brief = S.builder ? buildBrief({ db, builder: S.builder, campaign: c, scenario: sc, findings: notes, details, spice: S.spice }) : '';
     const gem = S.geminiKey && !S.keyEdit
       ? `<div class="result-actions" style="margin-top:6px"><button class="primary" data-act="gemini">Ask Gemini for 3 more approaches</button><button class="ghost" data-act="key-edit">Change key</button><button class="ghost" data-act="key-forget">Remove key from this device</button></div>`
       : keyFormHtml(false);
@@ -373,8 +387,8 @@ export function initBuilder(db, camps, ui) {
     S.keyPrompt = false;
     if (!S.approaches.length) makeApproaches();
     if (!S.builder) { S.claudeMsg = 'Pick an investigator first.'; render(); return; }
-    const { c, sc, notes } = playing();
-    const brief = buildBrief({ db, builder: S.approaches[0]?.builder || S.builder, campaign: c, scenario: sc, findings: notes, spice: S.spice });
+    const { c, sc, notes, details } = playing();
+    const brief = buildBrief({ db, builder: S.approaches[0]?.builder || S.builder, campaign: c, scenario: sc, findings: notes, details, spice: S.spice });
     const before = S.view;
     S.view = 'thinking'; S.claudeMsg = ''; save(); render(); scrollToOut();
     const t0 = Date.now();
@@ -409,7 +423,7 @@ export function initBuilder(db, camps, ui) {
   // ---------- Render ----------
   function render() {
     const invs = ownedInvestigators(db, S.owned);
-    const ready = Object.values(S.owned).some(Boolean) && invs.length;
+    const ready = Object.values(S.owned).some(Boolean) && invs.length && (campaignBy[S.campaign] || S.campaign === '__none');
     let out = '';
     if (S.view === 'thinking') out = thinkingHtml();
     else if (S.view === 'approaches') out = approachesHtml();
@@ -461,6 +475,7 @@ export function initBuilder(db, camps, ui) {
     else if (d.role) { S.role = d.role; S.invCode = ''; resetBuild(); }
     else if (d.pick) { S.invCode = d.pick; S.choices = {}; resetBuild(); }
     else if (d.spice) { S.spice = +d.spice; resetBuild(); }
+    else if (d.scen !== undefined) { S.scenario = d.scen; resetBuild(); }
     else if (d.sel) { S.sel = +d.sel; S.builder = S.approaches[S.sel].builder; render(); return; }
     else if (d.inc || d.dec) {
       const id = d.inc || d.dec;

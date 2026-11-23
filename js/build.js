@@ -169,17 +169,34 @@ export function scoreCard(card, ctx) {
   if (ctx.engine && ctx.engine.match(card)) { s += 3; reasons.push(`Fits the ${ctx.engine.name} plan`); }
   if (ctx.keyTraits?.size && (card.traits || '').toLowerCase().split('.').some(t => ctx.keyTraits.has(t.trim()))) s += 0.8;
   if (ctx.jitter) s += (ctx.jitter.get(identity(card)) || 0) * (0.3 + spice * 1.1);
-  const pr = ctx.pr || {};
-  const t0 = plain(card.text);
-  if (pr.willpower > 0.1 && (roles.has('boost_w') || roles.has('cancel'))) { s += 0.9; reasons.push("Helps with this campaign's willpower tests"); }
-  if (pr.agility > 0.06 && (roles.has('boost_a') || roles.has('evade'))) s += 0.5;
-  if (pr.tough > 0.3 && roles.has('fight') && /\+\d damage|deals \+\d|deal (2|3|4) damage/.test(t0)) { s += 0.9; reasons.push('Extra damage for tough enemies'); }
-  if (pr.tough > 0.3 && roles.has('evade')) s += 0.4;
-  if (pr.hunters > 0.1 && (roles.has('fight') || roles.has('evade'))) s += 0.3;
-  if (pr.shroud > 0.25 && roles.has('clue') && (roles.has('boost_i') || /without (making a|testing)|discover \d+ clues? at (your|a) location\./.test(t0))) { s += 0.8; reasons.push('Gets around high shroud'); }
-  if (pr.horror > 0.05 && (card.sanity > 0 || /hh/.test(card.tags || ''))) { s += 0.7; reasons.push('Soaks or heals horror'); }
-  if (pr.horror < -0.06 && (card.health > 0 || /hd/.test(card.tags || ''))) { s += 0.7; reasons.push('Soaks or heals damage'); }
-  if (pr.curse && /\[bless\]/.test(t0)) s += 0.6;
+  // What you're playing is the biggest factor: score how well the card answers this scenario.
+  const pr = ctx.pr;
+  if (pr && pr.shares) {
+    const t0 = plain(card.text);
+    const fit = [];
+    const add = (v, why) => { if (v > 0.05) fit.push([v, why]); };
+    const sh = pr.shares;
+    if (roles.has('boost_w') || roles.has('cancel')) add(2.4 * sh.willpower / 0.5, `answers its willpower tests (${Math.round(sh.willpower * 100)}% of tests)`);
+    if (roles.has('boost_a')) add(1.8 * sh.agility / 0.26, `helps its agility tests (${Math.round(sh.agility * 100)}% of tests)`);
+    if (roles.has('boost_i') && roles.has('clue')) add(1.0 + Math.max(0, pr.shroud) * 2, 'boosts intellect against its shroud');
+    const bigHit = roles.has('fight') && /\+\d damage|deals \+\d|deal (2|3|4|x) damage|\+1 damage/.test(t0);
+    if (bigHit) add(1.0 + Math.max(0, pr.tough) * 2.5 + (pr.elite ? 1 : 0), pr.elite ? 'extra damage for its big, Elite enemies' : 'extra damage for its enemies');
+    if (roles.has('evade')) add(0.6 + Math.max(0, pr.tough) * 1.5 + Math.max(0, pr.hunters) * 5 - (pr.slippery > 0.3 ? 1 : 0) + (pr.elite ? 0.5 : 0), pr.hunters > 0.08 ? 'shakes off its hunters' : 'avoids its tough fights');
+    if (roles.has('clue') && /without (making a|testing)|discover \d+ clues? at (your|a|any|its) location\.|automatically succeed/.test(t0)) add(0.8 + Math.max(0, pr.shroud) * 3, 'finds clues despite its shroud');
+    const horrorHelp = card.sanity > 0 || /hh/.test(card.tags || ''), damageHelp = card.health > 0 || /hd/.test(card.tags || '');
+    if (horrorHelp && pr.horror > 0.03) add(pr.horror * 14, 'soaks or heals its horror');
+    else if (damageHelp && pr.horror < -0.03) add(-pr.horror * 14, 'soaks or heals its damage');
+    if (pr.curse && /\[bless\]/.test(t0)) add(1.8, 'counters its curse tokens');
+    if (pr.doom > 0.03 && (/additional action|take an additional action/.test(t0) || card.type === 'event' && /^fast\./.test(t0))) add(1.2, 'saves actions against its doom clock');
+    if (pr.flood && /\bmove\b/.test(t0)) add(1.0, 'gets you around its flooded map');
+    if (pr.frost && /\bseal\b|chaos token|reveal (an|another) (additional )?token/.test(t0)) add(1.0, 'manipulates the chaos bag against frost');
+    const total = fit.reduce((x, [v]) => x + v, 0);
+    s += total * 1.6;
+    if (fit.length) {
+      fit.sort((a, b) => b[0] - a[0]);
+      reasons.unshift(`For ${ctx.playingName || 'this scenario'}: ${fit.slice(0, 2).map(f => f[1]).join(' and ')}`);
+    }
+  }
 
   const primary = ctx.role === 'clues' ? 'clue' : ctx.role === 'fighter' ? 'enemy' : null;
   const sorted = buckets.map(b => {
@@ -225,15 +242,16 @@ export function scoreCard(card, ctx) {
     }
   }
   if (!buckets.length && card.type !== 'skill' && !STAPLES.has(card.name)) s -= 0.6;
+  if (card.type === 'asset' && (ctx.assets || 0) >= ctx.assetCap) s -= 2 + (ctx.assets - ctx.assetCap) * 0.6;
   if (card.type === 'skill' && (ctx.skills || 0) >= ctx.skillCap) s -= 2.5 + (ctx.skills - ctx.skillCap) * 0.5;
   return { score: s, reasons: [...new Set(reasons)].slice(0, 3), buckets };
 }
 
 // --- Building ---------------------------------------------------------------
 export class Builder {
-  constructor(db, { inv, owned, role, players, choices = {}, xp = 0, pr = null, engine = null, spice = 0, seed = 1, keyNames = [], avoidNames = [] }) {
+  constructor(db, { inv, owned, role, players, choices = {}, xp = 0, pr = null, playingName = '', engine = null, spice = 0, seed = 1, keyNames = [], avoidNames = [] }) {
     this.db = db; this.inv = inv; this.players = players; this.choices = choices;
-    this.pr = pr; this.engine = engine; this.spice = spice;
+    this.pr = pr; this.playingName = playingName; this.engine = engine; this.spice = spice;
     this.role = role === 'auto' || !role ? autoRole(inv) : role;
     this.size = deckSizeFor(inv, choices);
     this.targets = adjustTargets(targetsFor(this.role, players, this.size, inv), pr);
@@ -274,16 +292,17 @@ export class Builder {
 
   state() {
     const counts = {}, slotUse = {};
-    let skills = 0;
+    let skills = 0, assets = 0;
     for (const { card, count } of this.picks.values()) {
       if (card.type === 'skill') skills += count;
+      if (card.type === 'asset') assets += count;
       for (const b of bucketsOf(cardRoles(card))) counts[b] = (counts[b] || 0) + count;
       if (card.type === 'asset' && card.slot) for (const part of card.slot.split('.').map(x => x.trim()).filter(Boolean)) {
         const [name, mult] = part.split(' x');
         slotUse[name] = (slotUse[name] || 0) + count * (mult ? +mult : 1);
       }
     }
-    return { inv: this.inv, role: this.role, targets: this.targets, counts, slotUse, synergy: this.synergy, skills, skillCap: Math.round(this.size * 0.2), engine: this.engine, spice: this.spice, jitter: this.jitter, pr: this.pr || {}, keyTraits: this.keyTraits };
+    return { inv: this.inv, role: this.role, targets: this.targets, counts, slotUse, synergy: this.synergy, skills, skillCap: Math.round(this.size * 0.2), assets, assetCap: Math.round(this.size * 0.55), engine: this.engine, spice: this.spice, jitter: this.jitter, pr: this.pr, playingName: this.playingName, keyTraits: this.keyTraits };
   }
 
   // Can `count` more copies of card go in without breaking a limited rule?

@@ -107,6 +107,17 @@ function profile(cards) {
     if (/\bsurge\b/.test(t)) p.surge += q;
   }
   const avg = a => a.length ? +(a.reduce((x, y) => x + y, 0) / a.length).toFixed(2) : null;
+  // Named threats and the most common treacheries, for the page and for the AI brief
+  const seenT = new Set();
+  const threats = cards.filter(c => c.type_code === 'enemy' && typeof c.enemy_fight === 'number')
+    .map(c => ({ name: c.name, fight: c.enemy_fight, evade: c.enemy_evade, health: c.health ?? null, perInv: !!c.health_per_investigator,
+      dmg: c.enemy_damage || 0, hor: c.enemy_horror || 0, kw: KEYWORDS.filter(k => new RegExp(`\\b${k}\\b`).test(plain(c.text))),
+      elite: /elite/i.test(c.traits || ''), score: (c.enemy_fight || 0) + (c.health || 0) * (c.health_per_investigator ? 2 : 1) + (/elite/i.test(c.traits || '') ? 3 : 0) }))
+    .sort((a, b) => b.score - a.score).filter(t => !seenT.has(t.name) && seenT.add(t.name)).slice(0, 4).map(({ score, ...t }) => t);
+  const tre = cards.filter(c => c.type_code === 'treachery').sort((a, b) => (b.quantity || 1) - (a.quantity || 1))
+    .filter(c => !seenT.has(c.name) && seenT.add(c.name)).slice(0, 5)
+    .map(c => ({ name: c.name, copies: c.quantity || 1, test: (plain(c.text).match(/test \[(\w+)\] \((\d|x)\)/) || []).slice(1).join(' ') || null, text: plain(c.text).slice(0, 160) }));
+  const scenCard = cards.find(c => c.type_code === 'scenario');
   const totalTests = Object.values(p.tests).reduce((a, b) => a + b, 0) || 1;
   const n = Math.max(1, p.enemies);
   return {
@@ -120,6 +131,8 @@ function profile(cards) {
     perCard: +((p.dmg + p.hor) / Math.max(1, p.treacheries + p.enemies)).toFixed(2),
     doom: +(p.doom / Math.max(1, cards.length)).toFixed(2), curse: p.curse, bless: p.bless, frost: p.frost, flood: p.flood, poison: p.poison,
     surge: +(p.surge / Math.max(1, p.treacheries)).toFixed(2),
+    threats, treacheries: tre,
+    tokens: scenCard ? plain(scenCard.text).replace(/^easy \/ standard\s*/, '').slice(0, 420) : null,
   };
 }
 

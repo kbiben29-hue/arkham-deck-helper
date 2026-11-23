@@ -13,6 +13,10 @@ export function blendProfile(campaign, scenario) {
     tests: Object.fromEntries(Object.keys(a.tests).map(k => [k, mix(a.tests[k], b.tests[k], b.cards > 15 ? 0.6 : 0.35)])),
     enemyFight: mix(a.enemyFight, b.enemyFight), enemyEvade: mix(a.enemyEvade, b.enemyEvade), enemyHealth: mix(a.enemyHealth, b.enemyHealth),
     hunters: mix(a.hunters, b.hunters), shroud: mix(a.shroud, b.shroud), damageShare: mix(a.damageShare, b.damageShare),
+    doom: mix(a.doom, b.doom),
+    threats: b.threats?.length ? b.threats : a.threats,
+    treacheries: b.treacheries?.length ? b.treacheries : a.treacheries,
+    tokens: b.tokens || null,
   };
 }
 
@@ -28,6 +32,9 @@ export function pressures(p, avg) {
     hunters: (p.hunters ?? avg.hunters) - avg.hunters,
     shroud: (p.shroud ?? avg.shroud) - avg.shroud,
     horror: avg.damageShare - (p.damageShare ?? avg.damageShare),   // + means more horror than usual
+    doom: (p.doom ?? avg.doom) - avg.doom,
+    shares: p.tests,
+    elite: (p.threats || []).some(t => t.elite && (t.health || 0) * (t.perInv ? 2 : 1) >= 5),
     curse: p.curse > 3,
     frost: p.frost > 5,
     flood: p.flood > 5,
@@ -53,17 +60,33 @@ export function findings(p, avg) {
   if (pr.curse) out.push({ w: 0.5, text: 'Curse tokens show up in the encounter deck, so bless cards can offset them.' });
   if (pr.frost) out.push({ w: 0.5, text: 'Frost tokens go into the chaos bag, so tests get harder over time.' });
   if (pr.flood) out.push({ w: 0.5, text: 'Locations flood, so moving efficiently matters.' });
+  if (pr.doom > 0.04) out.push({ w: pr.doom * 10, text: 'Doom piles up fast. Cards that save actions or speed you up are worth more.' });
   return out.sort((a, b) => b.w - a.w).slice(0, 5).map(f => f.text);
+}
+
+// Named threats, for the page and the AI brief.
+export function threatLines(p) {
+  if (!p) return [];
+  const t = (p.threats || []).map(e => `${e.name}${e.elite ? ' (Elite)' : ''}: fight ${e.fight}, evade ${e.evade ?? '–'}, health ${e.health ?? '–'}${e.perInv ? ' per investigator' : ''}${e.kw.length ? `, ${e.kw.join(', ')}` : ''}`);
+  const tr = (p.treacheries || []).slice(0, 3).map(x => `${x.name}${x.copies > 1 ? ` ×${x.copies}` : ''}${x.test ? ` (${x.test} test)` : ''}`);
+  return { threats: t, treacheries: tr, tokens: p.tokens };
 }
 
 // Adjust per-category targets for the deck based on what the campaign throws at you.
 export function adjustTargets(targets, pr) {
   const t = { ...targets };
   if (!pr || pr.willpower === undefined) return t;
-  if (pr.willpower > 0.1) t.protect += 1;
+  if (pr.willpower > 0.05) t.protect += 1;
+  if (pr.willpower > 0.12) t.protect += 1;
   if (pr.willpower > 0.2) t.protect += 1;
-  if (pr.tough > 0.3 || pr.hunters > 0.1) t.enemy += 1;
-  if (pr.shroud > 0.25) t.clue += 1;
-  if (Math.abs(pr.horror) > 0.05) t.alive += 1;
+  if (pr.agility > 0.08) t.protect += 1;
+  if (pr.tough > 0.2 || pr.elite) t.enemy += 1;
+  if (pr.tough > 0.5 || pr.hunters > 0.1) t.enemy += 1;
+  if (pr.shroud > 0.2) t.clue += 1;
+  if (pr.shroud > 0.5) t.clue += 1;
+  if (Math.abs(pr.horror) > 0.04) t.alive += 1;
+  if (Math.abs(pr.horror) > 0.1) t.alive += 1;
+  if (pr.tough < -0.3) t.enemy = Math.max(1, t.enemy - 1);
+  if (pr.shroud < -0.3) t.clue = Math.max(1, t.clue - 1);
   return t;
 }

@@ -4,7 +4,7 @@ import { ROLES } from './analyze.js';
 const plain = t => (t || '').replace(/<[^>]+>/g, '').replace(/\[\[([^\]]+)\]\]/g, '$1').replace(/\s+/g, ' ').trim();
 const SPICE = ['Proven: strong, well-known cards are welcome.', 'Mixed: some well-known cards, but look for fresh angles.', 'Off the beaten path: avoid the usual staples; find unusual synergies and cards people rarely play, especially combos between older and newer cards.'];
 
-export function buildBrief({ db, builder, campaign, scenario, findings, spice }) {
+export function buildBrief({ db, builder, campaign, scenario, findings, details, spice }) {
   const inv = builder.inv;
   const icons = c => ['w', 'i', 'c', 'a', 'x'].filter(k => c[k]).map(k => `${c[k]}${k.toUpperCase()}`).join(' ');
   const cards = [...builder.pool].sort((a, b) => a.card.type.localeCompare(b.card.type) || a.card.name.localeCompare(b.card.name)).map(({ card, max }) =>
@@ -13,7 +13,7 @@ export function buildBrief({ db, builder, campaign, scenario, findings, spice })
   return [
     'ARKHAM DECK HELPER: BRIEF FOR CLAUDE',
     '',
-    'TASK: Suggest 3 distinct approaches (different strategies, not small variations) for building this investigator\'s deck for what they are playing. Think creatively: look for synergies across old and new cards, and for plans that exploit or counter what this campaign throws at players. For each approach, list the 15 to 20 different cards the deck should use, most important first. The page adds up to 2 copies of each (as the rules and the collection allow), builds a legal deck from them and fills any remaining slots itself. Only name cards from the owned list below, using their exact names.',
+    'TASK: Suggest 3 distinct approaches (different strategies, not small variations) for building this investigator\'s deck for what they are playing. Above all, each approach must be built for the specific campaign or scenario below: its skill tests, its named enemies, its treacheries and its chaos tokens. Within that, think creatively: look for synergies across old and new cards. For each approach, list the 15 to 20 different cards the deck should use, most important first. The page adds up to 2 copies of each (as the rules and the collection allow), builds a legal deck from them and fills any remaining slots itself. Only name cards from the owned list below, using their exact names.',
     '',
     'HOW TO ANSWER: If you can act on this page, write your answer into the text box labeled "Claude\'s approaches" and click the "Build Claude\'s approaches" button. Otherwise, reply with only the JSON. Format:',
     '{"approaches":[{"name":"short catchy name","plan":"one or two sentences on how the deck wins","why":"why it suits this investigator and scenario","key_cards":["Exact Card Name"],"avoid":["Exact Card Name"]}]}',
@@ -24,9 +24,13 @@ export function buildBrief({ db, builder, campaign, scenario, findings, spice })
     `Required cards: ${req.join(' / ') || 'none'}`,
     `Role: ${ROLES[builder.role]}. Players: ${builder.players}. Deck size: ${builder.size}. Level 0 cards only.`,
     '',
-    `PLAYING: ${campaign ? `${campaign.name}${scenario ? `, scenario "${scenario.name}"` : ' (whole campaign)'}` : 'Nothing specific: a general-purpose deck.'}`,
+    `PLAYING (the most important factor; every approach must be built to beat this): ${campaign ? `${campaign.name}${scenario ? `, scenario "${scenario.name}"` : ' (whole campaign)'}` : 'Nothing specific: a general-purpose deck.'}`,
     ...(findings || []).map(f => `- ${f}`),
     campaign?.note ? `- ${campaign.note}` : '',
+    ...(details?.threats?.length ? ['Biggest enemies:', ...details.threats.map(t => `- ${t}`)] : []),
+    ...(details?.treacheries?.length ? ['Most common treacheries:', ...details.treacheries.map(t => `- ${t}`)] : []),
+    details?.tokens ? `Chaos token effects (Easy/Standard): ${details.tokens.replace(/\n/g, ' ')}` : '',
+    'In each approach\'s "why", say specifically how it handles these threats.',
     '',
     `STYLE: ${SPICE[spice]}`,
     '',

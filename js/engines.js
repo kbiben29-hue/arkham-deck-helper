@@ -53,7 +53,7 @@ export function viableEngines(pool, inv, pr = {}, rand = Math.random, spice = 1)
     if (cards.length < 4 || copies < 7) continue;
     let score = Math.min(copies, 16) / 4;
     if (e.stat) score += ((inv[e.stat] || 0) - 3) * 0.9;
-    if (e.fits) score += e.fits(pr);
+    if (e.fits && pr.shares) score += e.fits(pr) * 2.2;
     // Investigator ability mentions this theme
     if (invText.includes(e.key) || (e.key === 'tome' && invText.includes('tome')) || (e.key === 'spell' && invText.includes('spell'))) score += 2;
     score += (rand() - 0.5) * (0.5 + spice * 1.5);
