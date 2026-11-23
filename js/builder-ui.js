@@ -3,6 +3,7 @@ import { Builder, STEPS, BUCKETS, REPRINTS, ownedInvestigators, roleFit, autoRol
 import { choiceOptions, cardRoles, ROLES } from './analyze.js';
 import { blendProfile, pressures, findings } from './campaign.js';
 import { buildBrief, parseReply } from './claude.js';
+import { askGemini } from './gemini.js';
 
 const GRADE_TEXT = { strong: 'Strong', ok: 'OK', thin: 'Thin', missing: 'Missing' };
 const FACTIONS = ['guardian', 'seeker', 'rogue', 'mystic', 'survivor', 'neutral'];
@@ -37,6 +38,9 @@ export function initBuilder(db, camps, ui) {
     sel: 0,
     claudeText: '',
     claudeMsg: '',
+    geminiKey: store.get('geminiKey') || '',
+    keyEdit: false,
+    busy: false,
   };
   if (!Object.keys(S.owned).length) S.editing = true;
   const save = () => {
@@ -303,13 +307,22 @@ export function initBuilder(db, camps, ui) {
   function claudeHtml() {
     const { c, sc, notes } = playing();
     const brief = S.builder ? buildBrief({ db, builder: S.builder, campaign: c, scenario: sc, findings: notes, spice: S.spice }) : '';
+    const gem = S.geminiKey && !S.keyEdit
+      ? `<div class="result-actions" style="margin-top:6px"><button class="primary" data-act="gemini" ${S.busy ? 'disabled' : ''}>${S.busy ? 'Asking Gemini…' : 'Ask Gemini for 3 approaches'}</button><button class="ghost" data-act="key-edit">Change key</button></div>`
+      : `<p style="margin:6px 0">Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> (sign in with Google, then <b>Create API key</b>) and paste it here. It's saved only in this browser and sent only to Google.</p>
+        <div class="who-row"><label>Gemini API key<input id="gemini-key" type="password" autocomplete="off" placeholder="AIza…" value="${esc(S.geminiKey)}"></label>
+        <button class="primary" data-act="key-save" style="min-height:44px">Save key</button>${S.geminiKey ? '<button class="ghost" data-act="key-forget" style="min-height:44px">Remove key</button>' : ''}</div>
+        <p class="sub">Free keys have daily limits, and Google may use what you send on the free tier to improve its products. It's only deck info, but worth knowing.</p>`;
     return `<div class="panel claude">
-      <h3 style="font-size:26px">Ask Claude for more ideas</h3>
+      <h3 style="font-size:26px">Ask AI for more ideas</h3>
+      <h4 class="ai-h">Gemini (free key, works on any device)</h4>
+      ${gem}
+      <h4 class="ai-h">Claude in Chrome (uses your Claude plan)</h4>
       <p style="margin:6px 0">On your Mac in Chrome, open the <b>Claude side panel</b> on this page and say: <i>“Read the brief on this page and add your approaches.”</i> Claude writes its ideas into the box below and clicks the button. The page turns each idea into a legal deck from your collection.</p>
       <details><summary class="sub">Brief for Claude (${S.builder ? S.builder.pool.length : 0} cards you own that ${esc(S.builder?.inv.name || 'this investigator')} can use)</summary>
         <pre id="claude-brief" class="brief">${esc(brief)}</pre></details>
       <div class="result-actions" style="margin-top:6px"><button class="ghost" data-act="copy-brief">Copy brief</button></div>
-      <label class="field-label" for="claude-plan" style="margin-top:12px">Claude's approaches</label>
+      <label class="field-label" for="claude-plan" style="margin-top:12px">Claude's approaches (Gemini's answer lands here too)</label>
       <textarea id="claude-plan" rows="6" placeholder='{"approaches":[{"name":"…","plan":"…","why":"…","key_cards":["…"],"avoid":[]}]}'>${esc(S.claudeText)}</textarea>
       <div class="result-actions"><button class="primary" id="claude-build" data-act="claude-build">Build Claude's approaches</button></div>
       ${S.claudeMsg ? `<p class="status ${S.claudeMsg.startsWith('Built') ? '' : 'err'}">${esc(S.claudeMsg)}</p>` : ''}
@@ -324,7 +337,7 @@ export function initBuilder(db, camps, ui) {
       const gs = a.report.pillars.map(p => p.grade);
       const weak = a.report.pillars.filter(p => order[p.grade] <= 1).map(p => p.label.toLowerCase());
       return `<button class="approach" data-sel="${i}" aria-pressed="${i === S.sel}">
-        <span class="ap-top"><b>${esc(a.name)}</b>${a.claude ? '<span class="tag">Claude</span>' : ''}</span>
+        <span class="ap-top"><b>${esc(a.name)}</b>${a.claude ? `<span class="tag">${a.via || 'Claude'}</span>` : ''}</span>
         <span class="ap-plan">${esc(a.plan)}</span>
         <span class="ap-grades">${gs.map(g => `<i class="pip ${g}"></i>`).join('')}<small>${weak.length ? `Weak: ${esc(weak.join(', '))}` : 'No weak spots'}</small></span>
       </button>`;
@@ -423,11 +436,33 @@ export function initBuilder(db, camps, ui) {
       if (d.act === 'copy' && toast) toast.textContent = msg; else { S.claudeMsg = msg; render(); }
       return;
     }
+    else if (d.act === 'key-save') { S.geminiKey = (document.querySelector('#gemini-key')?.value || '').trim(); S.keyEdit = false; store.set('geminiKey', S.geminiKey); S.claudeMsg = S.geminiKey ? 'Key saved in this browser.' : ''; }
+    else if (d.act === 'key-edit') S.keyEdit = true;
+    else if (d.act === 'key-forget') { S.geminiKey = ''; S.keyEdit = false; store.set('geminiKey', ''); }
+    else if (d.act === 'gemini') {
+      const { c, sc, notes } = playing();
+      const brief = buildBrief({ db, builder: S.builder, campaign: c, scenario: sc, findings: notes, spice: S.spice });
+      S.busy = true; S.claudeMsg = ''; render();
+      try {
+        const { text, model } = await askGemini(S.geminiKey, brief);
+        S.claudeText = text;
+        claudeApproaches(text);
+        S.approaches.forEach(a => { if (a.claude && !a.via) a.via = 'Gemini'; });
+        S.claudeMsg = `Built ${S.approaches.filter(a => a.claude).length} approaches from Gemini's ideas (${model}). They're marked above.`;
+      } catch (err) {
+        S.claudeMsg = err.code === 'bad-key' ? 'Google rejected that key. Check it was copied fully, or create a new one.'
+          : err.code === 'limit' ? "You've hit the free key's limit for now. Try again in a minute, or tomorrow if it's the daily limit."
+          : err.message === 'no-json' || err.message === 'no-approaches' || err instanceof SyntaxError ? "Gemini's answer wasn't in the expected format. Try again." 
+          : "Couldn't reach Gemini. Check your connection and try again.";
+      }
+      S.busy = false; render(); if (S.claudeMsg.startsWith('Built')) scrollToOut(); return;
+    }
     else if (d.act === 'claude-build') {
       try {
         if (!S.approaches.length) makeApproaches();
         claudeApproaches(S.claudeText);
-        S.claudeMsg = `Built ${S.approaches.filter(a => a.claude).length} approaches from Claude's ideas. They're marked "Claude" above.`;
+        S.approaches.forEach(a => { if (a.claude && !a.via) a.via = 'Claude'; });
+        S.claudeMsg = `Built ${S.approaches.filter(a => a.claude).length} approaches from the AI's ideas. They're marked above.`;
       } catch (err) {
         S.claudeMsg = "Couldn't read that. Make sure it's the JSON reply from Claude: it starts with { and contains \"approaches\".";
       }
