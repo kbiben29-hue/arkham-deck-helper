@@ -40,7 +40,7 @@ export function initBuilder(db, camps, ui) {
     claudeMsg: '',
     geminiKey: store.get('geminiKey') || '',
     keyEdit: false,
-    busy: false,
+    keyPrompt: false,
   };
   if (!Object.keys(S.owned).length) S.editing = true;
   const save = () => {
@@ -308,11 +308,8 @@ export function initBuilder(db, camps, ui) {
     const { c, sc, notes } = playing();
     const brief = S.builder ? buildBrief({ db, builder: S.builder, campaign: c, scenario: sc, findings: notes, spice: S.spice }) : '';
     const gem = S.geminiKey && !S.keyEdit
-      ? `<div class="result-actions" style="margin-top:6px"><button class="primary" data-act="gemini" ${S.busy ? 'disabled' : ''}>${S.busy ? 'Asking Gemini…' : 'Ask Gemini for 3 approaches'}</button><button class="ghost" data-act="key-edit">Change key</button></div>`
-      : `<p style="margin:6px 0">Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> (sign in with Google, then <b>Create API key</b>) and paste it here. It's saved only in this browser and sent only to Google.</p>
-        <div class="who-row"><label>Gemini API key<input id="gemini-key" type="password" autocomplete="off" placeholder="AIza…" value="${esc(S.geminiKey)}"></label>
-        <button class="primary" data-act="key-save" style="min-height:44px">Save key</button>${S.geminiKey ? '<button class="ghost" data-act="key-forget" style="min-height:44px">Remove key</button>' : ''}</div>
-        <p class="sub">Free keys have daily limits, and Google may use what you send on the free tier to improve its products. It's only deck info, but worth knowing.</p>`;
+      ? `<div class="result-actions" style="margin-top:6px"><button class="primary" data-act="gemini">Ask Gemini for 3 more approaches</button><button class="ghost" data-act="key-edit">Change key</button><button class="ghost" data-act="key-forget">Remove key from this device</button></div>`
+      : keyFormHtml(false);
     return `<div class="panel claude">
       <h3 style="font-size:26px">Ask AI for more ideas</h3>
       <p class="sub" style="margin:4px 0 0">${S.geminiKey ? 'One tap: Gemini reads your investigator, campaign and cards, and new decks appear above.' : 'One-time setup: add a free Gemini key. After that it\'s one tap, on any device.'}</p>
@@ -352,12 +349,71 @@ export function initBuilder(db, camps, ui) {
       ${claudeHtml()}`;
   }
 
+  function keyFormHtml(thenBuild) {
+    return `<div class="keyform">
+      <p style="margin:10px 0 6px"><b>Add your free Gemini key on this device.</b> Get one at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>: sign in with Google, click <b>Create API key</b>, and copy it.</p>
+      <div class="who-row"><label>Gemini API key<input id="gemini-key" type="password" autocomplete="off" placeholder="AIza…" value="${esc(S.keyEdit ? S.geminiKey : '')}"></label>
+      <button class="primary" data-act="key-save" data-then="${thenBuild ? 'gemini' : ''}" style="min-height:44px">${thenBuild ? 'Save and ask Gemini' : 'Save key'}</button></div>
+      <p class="sub">The key is stored only in this browser on this device and is sent only to Google. Every other device has to add its own key, so nobody else can use yours. Free keys have daily limits, and Google may use what you send on the free tier to improve its products (here that's just deck info).</p>
+    </div>`;
+  }
+
+  function thinkingHtml() {
+    return `<div class="panel thinking" role="status">
+      <div class="spinner" aria-hidden="true"></div>
+      <div><h3 style="font-size:24px">Gemini is building your approaches…</h3>
+        <p class="sub" style="margin:4px 0 0"><span id="gem-timer">0</span> seconds. This usually takes 10 to 40 seconds. The decks appear here automatically, so there's no need to refresh.</p></div>
+      <button class="ghost" data-act="gemini-cancel">Cancel</button>
+    </div>`;
+  }
+
+  let gemAbort = null, gemTimer = null;
+  async function runGemini() {
+    if (!S.geminiKey) { S.keyPrompt = true; render(); document.querySelector('#gemini-key')?.focus(); return; }
+    S.keyPrompt = false;
+    if (!S.approaches.length) makeApproaches();
+    if (!S.builder) { S.claudeMsg = 'Pick an investigator first.'; render(); return; }
+    const { c, sc, notes } = playing();
+    const brief = buildBrief({ db, builder: S.approaches[0]?.builder || S.builder, campaign: c, scenario: sc, findings: notes, spice: S.spice });
+    const before = S.view;
+    S.view = 'thinking'; S.claudeMsg = ''; save(); render(); scrollToOut();
+    const t0 = Date.now();
+    gemTimer = setInterval(() => { const el = document.querySelector('#gem-timer'); if (el) el.textContent = Math.round((Date.now() - t0) / 1000); }, 1000);
+    gemAbort = new AbortController();
+    const timeout = setTimeout(() => gemAbort.abort('timeout'), 120000);
+    try {
+      const { text, model } = await askGemini(S.geminiKey, brief, gemAbort.signal);
+      S.claudeText = text;
+      claudeApproaches(text);
+      S.approaches.forEach(a => { if (a.claude && !a.via) a.via = 'Gemini'; });
+      // Show Gemini's decks first
+      const gem = S.approaches.filter(a => a.via === 'Gemini'), rest = S.approaches.filter(a => a.via !== 'Gemini');
+      S.approaches = [...gem, ...rest]; S.sel = 0; S.builder = S.approaches[0].builder;
+      S.claudeMsg = `Gemini suggested ${gem.length} approaches (${model}). They're first in the list, marked "Gemini". The app's own ideas follow.`;
+      S.view = 'approaches';
+    } catch (err) {
+      S.view = before === 'thinking' || !before ? (S.approaches.length ? 'approaches' : '') : before;
+      if (!S.approaches.length) S.view = '';
+      S.claudeMsg = gemAbort.signal.aborted ? (gemAbort.signal.reason === 'timeout' ? 'Gemini took too long to answer. Try again.' : 'Cancelled.')
+        : err.code === 'bad-key' ? 'Google rejected that key. Check it was copied fully, or create a new one.'
+        : err.code === 'limit' ? "You've hit the free key's limit for now. Try again in a minute, or tomorrow if it's the daily limit."
+        : err.message === 'no-json' || err.message === 'no-approaches' || err instanceof SyntaxError ? "Gemini's answer wasn't in the expected format. Try again."
+        : `Couldn't reach Gemini (${err.code || err.message}). Check your connection and try again.`;
+      if (S.view === '') S.keyPrompt = err.code === 'bad-key';
+    } finally {
+      clearInterval(gemTimer); clearTimeout(timeout); gemAbort = null;
+    }
+    render(); scrollToOut();
+  }
+
   // ---------- Render ----------
   function render() {
     const invs = ownedInvestigators(db, S.owned);
     const ready = Object.values(S.owned).some(Boolean) && invs.length;
     let out = '';
-    if (S.view === 'approaches') out = approachesHtml();
+    if (S.view === 'thinking') out = thinkingHtml();
+    else if (S.view === 'approaches') out = approachesHtml();
+    else if (S.claudeMsg && !S.view) out = `<div class="panel"><p class="status err">${esc(S.claudeMsg)}</p></div>`;
     else if (S.view === 'result' && S.builder) out = deckHtml(S.builder) + claudeHtml();
     else if (S.view === 'guide' && S.builder) out = guideHtml(S.builder);
     root.innerHTML = `
@@ -370,8 +426,10 @@ export function initBuilder(db, camps, ui) {
         <p class="sub" style="margin:6px 0 14px">${SPICE[S.spice][1]}.</p>
         <div class="modes">
           <button class="mode" data-act="auto" ${ready ? '' : 'disabled'}><b>Show me approaches</b><span>Several complete decks, each built around a different plan, tuned to what you're playing. Ask Claude for more.</span></button>
+          <button class="mode gem" data-act="gemini" ${ready ? '' : 'disabled'}><b>Ask Gemini</b><span>Gemini picks the cards for 3 different plans; the app makes them legal, fills the gaps and shows the decks.${S.geminiKey ? '' : ' Needs a free Google key on this device.'}</span></button>
           <button class="mode" data-act="walk" ${ready ? '' : 'disabled'}><b>Walk me through it</b><span>Pick cards step by step, from key cards to skills, with suggestions and a live checkup.</span></button>
-        </div></section>` : ''}
+        </div>
+        ${S.keyPrompt ? keyFormHtml(true) : ''}</section>` : ''}
       <section id="b-out" class="b-step" ${out ? '' : 'hidden'}>${out}</section>`;
   }
 
@@ -437,27 +495,15 @@ export function initBuilder(db, camps, ui) {
       if (d.act === 'copy' && toast) toast.textContent = msg; else { S.claudeMsg = msg; render(); }
       return;
     }
-    else if (d.act === 'key-save') { S.geminiKey = (document.querySelector('#gemini-key')?.value || '').trim(); S.keyEdit = false; store.set('geminiKey', S.geminiKey); S.claudeMsg = S.geminiKey ? 'Key saved in this browser.' : ''; }
-    else if (d.act === 'key-edit') S.keyEdit = true;
-    else if (d.act === 'key-forget') { S.geminiKey = ''; S.keyEdit = false; store.set('geminiKey', ''); }
-    else if (d.act === 'gemini') {
-      const { c, sc, notes } = playing();
-      const brief = buildBrief({ db, builder: S.builder, campaign: c, scenario: sc, findings: notes, spice: S.spice });
-      S.busy = true; S.claudeMsg = ''; render();
-      try {
-        const { text, model } = await askGemini(S.geminiKey, brief);
-        S.claudeText = text;
-        claudeApproaches(text);
-        S.approaches.forEach(a => { if (a.claude && !a.via) a.via = 'Gemini'; });
-        S.claudeMsg = `Built ${S.approaches.filter(a => a.claude).length} approaches from Gemini's ideas (${model}). They're marked above.`;
-      } catch (err) {
-        S.claudeMsg = err.code === 'bad-key' ? 'Google rejected that key. Check it was copied fully, or create a new one.'
-          : err.code === 'limit' ? "You've hit the free key's limit for now. Try again in a minute, or tomorrow if it's the daily limit."
-          : err.message === 'no-json' || err.message === 'no-approaches' || err instanceof SyntaxError ? "Gemini's answer wasn't in the expected format. Try again." 
-          : "Couldn't reach Gemini. Check your connection and try again.";
-      }
-      S.busy = false; render(); if (S.claudeMsg.startsWith('Built')) scrollToOut(); return;
+    else if (d.act === 'key-save') {
+      S.geminiKey = (document.querySelector('#gemini-key')?.value || '').trim(); S.keyEdit = false; store.set('geminiKey', S.geminiKey);
+      if (S.geminiKey && d.then === 'gemini') { S.keyPrompt = false; runGemini(); return; }
+      S.claudeMsg = S.geminiKey ? 'Key saved on this device.' : '';
     }
+    else if (d.act === 'key-edit') S.keyEdit = true;
+    else if (d.act === 'key-forget') { S.geminiKey = ''; S.keyEdit = false; store.set('geminiKey', ''); S.claudeMsg = 'Key removed from this device.'; }
+    else if (d.act === 'gemini') { runGemini(); return; }
+    else if (d.act === 'gemini-cancel') { gemAbort?.abort('user'); return; }
     else if (d.act === 'claude-build') {
       try {
         if (!S.approaches.length) makeApproaches();

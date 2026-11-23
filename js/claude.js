@@ -13,7 +13,7 @@ export function buildBrief({ db, builder, campaign, scenario, findings, spice })
   return [
     'ARKHAM DECK HELPER: BRIEF FOR CLAUDE',
     '',
-    'TASK: Suggest 3 distinct approaches (different strategies, not small variations) for building this investigator\'s deck for what they are playing. Think creatively: look for synergies across old and new cards, and for plans that exploit or counter what this campaign throws at players. Each approach names up to 10 key cards. The page will build a legal 30-card deck around them from the owned cards below, so only name cards from that list, using their exact names.',
+    'TASK: Suggest 3 distinct approaches (different strategies, not small variations) for building this investigator\'s deck for what they are playing. Think creatively: look for synergies across old and new cards, and for plans that exploit or counter what this campaign throws at players. For each approach, list the 15 to 20 different cards the deck should use, most important first. The page adds up to 2 copies of each (as the rules and the collection allow), builds a legal deck from them and fills any remaining slots itself. Only name cards from the owned list below, using their exact names.',
     '',
     'HOW TO ANSWER: If you can act on this page, write your answer into the text box labeled "Claude\'s approaches" and click the "Build Claude\'s approaches" button. Otherwise, reply with only the JSON. Format:',
     '{"approaches":[{"name":"short catchy name","plan":"one or two sentences on how the deck wins","why":"why it suits this investigator and scenario","key_cards":["Exact Card Name"],"avoid":["Exact Card Name"]}]}',
@@ -56,7 +56,7 @@ export function parseReply(text) {
     name: String(a.name || `Claude idea ${i + 1}`).slice(0, 60),
     plan: String(a.plan || '').slice(0, 400),
     why: String(a.why || '').slice(0, 400),
-    key: (a.key_cards || a.keyCards || a.cards || []).map(String).slice(0, 12),
+    key: (a.key_cards || a.keyCards || a.cards || []).map(String).slice(0, 24),
     avoid: (a.avoid || []).map(String).slice(0, 20),
   }));
 }

@@ -321,6 +321,26 @@ function openInCheckup(text, role, players) {
   window.scrollTo({ top: 0 });
 }
 
+// --- New version check ------------------------------------------------------
+// GitHub Pages caches files for a few minutes. Check quietly for a newer version and offer a one-tap reload.
+let loadedVersion = null;
+async function checkVersion() {
+  try {
+    const v = (await (await fetch('version.json', { cache: 'no-store' })).json()).version;
+    if (!loadedVersion) loadedVersion = v;
+    else if (v !== loadedVersion && !document.querySelector('#update-bar')) {
+      const bar = document.createElement('div');
+      bar.id = 'update-bar'; bar.className = 'update-bar'; bar.setAttribute('role', 'status');
+      bar.innerHTML = '<span>A new version of Deck Helper is ready.</span><button class="primary">Update now</button>';
+      bar.querySelector('button').addEventListener('click', () => location.reload());
+      document.body.append(bar);
+    }
+  } catch { /* offline or local file: ignore */ }
+}
+checkVersion();
+setInterval(checkVersion, 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkVersion(); });
+
 // --- Start ----------------------------------------------------------------
 (async () => {
   $('#deck-text').value = store.get('text') || SAMPLE_DECK;
@@ -330,11 +350,11 @@ function openInCheckup(text, role, players) {
   if (store.get('tab') === 'link') setTab('link');
   status('Loading card data…');
   try {
-    const res = await fetch('data/cards.json');
+    const res = await fetch('data/cards.json', { cache: 'no-cache' });
     db = makeDb(await res.json());
     status('');
     if (store.get('tab') !== 'link') check();
-    const camps = await (await fetch('data/campaigns.json')).json();
+    const camps = await (await fetch('data/campaigns.json', { cache: 'no-cache' })).json();
     initBuilder(db, camps, { cardImg, esc, store, openInCheckup });
   } catch {
     status('Card data failed to load. Try refreshing the page.', true);

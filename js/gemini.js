@@ -21,12 +21,12 @@ async function candidateModels(key) {
   }
 }
 
-export async function askGemini(key, brief) {
+export async function askGemini(key, brief, signal) {
   const prompt = `${brief}\n\nIMPORTANT: Reply with only the JSON object described above, with 3 approaches. Use exact card names from the list.`;
   let lastErr = 'unknown';
   for (const model of (await candidateModels(key)).slice(0, 4)) {
     const res = await fetch(`${BASE}/models/${model}:generateContent`, {
-      method: 'POST',
+      method: 'POST', signal,
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
