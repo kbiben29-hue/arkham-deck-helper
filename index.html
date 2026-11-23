@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Deck Checkup · Arkham Horror LCG</title>
+  <meta name="description" content="Paste an Arkham Horror: The Card Game deck and see where it's strong, where it's thin, and what to fix first.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English+SC&family=IM+Fell+English:ital@0;1&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="masthead">
+    <div class="wrap mast-inner">
+      <svg class="sigil" viewBox="0 0 64 64" aria-hidden="true">
+        <circle cx="32" cy="32" r="29" fill="none" stroke="currentColor" stroke-width="2"/>
+        <circle cx="32" cy="32" r="22" fill="none" stroke="currentColor" stroke-width="1" opacity=".5"/>
+        <path d="M32 9 L37 27 L55 32 L37 37 L32 55 L27 37 L9 32 L27 27 Z" fill="currentColor" opacity=".9"/>
+        <circle cx="32" cy="32" r="4.5" fill="var(--bg)"/>
+      </svg>
+      <div>
+        <h1>Deck Checkup</h1>
+        <p class="tagline">for Arkham Horror: The Card Game: paste a deck and see what it's missing before the Mythos finds out.</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="panel input-panel" aria-label="Your deck">
+      <div class="tabs" role="tablist">
+        <button role="tab" id="tab-paste" aria-selected="true" aria-controls="pane-paste">Paste a deck list</button>
+        <button role="tab" id="tab-link" aria-selected="false" aria-controls="pane-link">ArkhamDB link</button>
+      </div>
+      <div id="pane-paste" role="tabpanel">
+        <label class="sr" for="deck-text">Deck list</label>
+        <textarea id="deck-text" rows="9" spellcheck="false" placeholder="Roland Banks&#10;2x Machete&#10;2x .45 Automatic (Core Set)&#10;1x Lightning Gun (5)&#10;…"></textarea>
+        <p class="hint">Paste a text export from ArkhamDB or arkham.build, ArkhamDB's JSON, or a plain list like <code>2x Machete</code>. Put the investigator's name on its own line. Add <code>(2)</code> after a card to mean its level 2 version.</p>
+      </div>
+      <div id="pane-link" role="tabpanel" hidden>
+        <label class="field-label" for="deck-link">ArkhamDB deck or decklist link</label>
+        <input id="deck-link" type="url" inputmode="url" placeholder="https://arkhamdb.com/deck/view/123456">
+        <p class="hint">Works for published decklists and decks set to public. Private decks: use “Copy as text” on ArkhamDB and paste it instead.</p>
+      </div>
+      <div class="controls">
+        <label>Your role
+          <select id="role">
+            <option value="auto">Auto (from investigator)</option>
+            <option value="clues">Clue finder</option>
+            <option value="fighter">Enemy handler</option>
+            <option value="flex">Flex (a bit of both)</option>
+          </select>
+        </label>
+        <label>Players
+          <select id="players">
+            <option value="1">1 (solo)</option>
+            <option value="2" selected>2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+          </select>
+        </label>
+        <button id="check" class="primary">Check deck</button>
+        <button id="sample" class="ghost">Try a sample deck</button>
+      </div>
+      <p id="status" class="status" role="status"></p>
+    </section>
+
+    <div id="results" class="results" hidden></div>
+  </main>
+
+  <footer class="wrap footer">
+    <p>Card data from <a href="https://github.com/Kamalisk/arkhamdb-json-data">arkhamdb-json-data</a>, card images from <a href="https://arkhamdb.com">ArkhamDB</a>. Arkham Horror: The Card Game is © Fantasy Flight Games. This is an unofficial fan tool. The grades are rules of thumb, not gospel.</p>
+  </footer>
+
+  <div id="preview" class="hover-preview" aria-hidden="true"></div>
+  <dialog id="card-dialog" class="card-dialog"></dialog>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
