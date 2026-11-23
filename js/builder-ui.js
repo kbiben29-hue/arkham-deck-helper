@@ -376,7 +376,8 @@ export function initBuilder(db, camps, ui) {
     return `<div class="panel thinking" role="status">
       <div class="spinner" aria-hidden="true"></div>
       <div><h3 style="font-size:24px">Gemini is building your approaches…</h3>
-        <p class="sub" style="margin:4px 0 0"><span id="gem-timer">0</span> seconds. This usually takes 10 to 40 seconds. The decks appear here automatically, so there's no need to refresh.</p></div>
+        <p class="sub" style="margin:4px 0 0"><span id="gem-status">Sending your scenario and cards…</span> · <span id="gem-timer">0</span>s</p>
+        <p class="sub" style="margin:2px 0 0">The decks appear here automatically, so there's no need to refresh.</p></div>
       <button class="ghost" data-act="gemini-cancel">Cancel</button>
     </div>`;
   }
@@ -388,15 +389,21 @@ export function initBuilder(db, camps, ui) {
     if (!S.approaches.length) makeApproaches();
     if (!S.builder) { S.claudeMsg = 'Pick an investigator first.'; render(); return; }
     const { c, sc, notes, details } = playing();
-    const brief = buildBrief({ db, builder: S.approaches[0]?.builder || S.builder, campaign: c, scenario: sc, findings: notes, details, spice: S.spice });
+    const brief = buildBrief({ db, builder: S.approaches[0]?.builder || S.builder, campaign: c, scenario: sc, findings: notes, details, spice: S.spice, limit: 150, textLen: 120 });
     const before = S.view;
     S.view = 'thinking'; S.claudeMsg = ''; save(); render(); scrollToOut();
     const t0 = Date.now();
     gemTimer = setInterval(() => { const el = document.querySelector('#gem-timer'); if (el) el.textContent = Math.round((Date.now() - t0) / 1000); }, 1000);
     gemAbort = new AbortController();
-    const timeout = setTimeout(() => gemAbort.abort('timeout'), 120000);
+    const timeout = setTimeout(() => gemAbort.abort('timeout'), 300000);
+    const status = msg => { const el = document.querySelector('#gem-status'); if (el) el.textContent = msg; };
+    const onProgress = p => {
+      if (p.phase === 'thinking') status(`Gemini (${p.model}) is thinking about your scenario…`);
+      else if (p.phase === 'writing') status(`Gemini is writing its plans… ${p.chars.toLocaleString()} characters so far`);
+      else if (p.phase === 'retry') status(p.why === 'limit' ? 'That model is at its limit, trying another…' : 'That model was slow, trying a faster one…');
+    };
     try {
-      const { text, model } = await askGemini(S.geminiKey, brief, gemAbort.signal);
+      const { text, model } = await askGemini(S.geminiKey, brief, gemAbort.signal, onProgress);
       S.claudeText = text;
       claudeApproaches(text);
       S.approaches.forEach(a => { if (a.claude && !a.via) a.via = 'Gemini'; });
@@ -408,11 +415,12 @@ export function initBuilder(db, camps, ui) {
     } catch (err) {
       S.view = before === 'thinking' || !before ? (S.approaches.length ? 'approaches' : '') : before;
       if (!S.approaches.length) S.view = '';
-      S.claudeMsg = gemAbort.signal.aborted ? (gemAbort.signal.reason === 'timeout' ? 'Gemini took too long to answer. Try again.' : 'Cancelled.')
+      S.claudeMsg = gemAbort.signal.aborted ? (gemAbort.signal.reason === 'timeout' ? 'Gemini took more than 5 minutes. Try again in a bit.' : 'Cancelled.')
+        : err.code === 'slow' ? "Gemini's servers didn't respond, even after trying a faster model. Google may be busy, so try again in a few minutes."
         : err.code === 'bad-key' ? 'Google rejected that key. Check it was copied fully, or create a new one.'
         : err.code === 'limit' ? "You've hit the free key's limit for now. Try again in a minute, or tomorrow if it's the daily limit."
         : err.message === 'no-json' || err.message === 'no-approaches' || err instanceof SyntaxError ? "Gemini's answer wasn't in the expected format. Try again."
-        : `Couldn't reach Gemini (${err.code || err.message}). Check your connection and try again.`;
+        : `Couldn't reach Gemini (${err.code || err.message}${err.status ? `, ${err.status}` : ''}). Check your connection and try again.`;
       if (S.view === '') S.keyPrompt = err.code === 'bad-key';
     } finally {
       clearInterval(gemTimer); clearTimeout(timeout); gemAbort = null;

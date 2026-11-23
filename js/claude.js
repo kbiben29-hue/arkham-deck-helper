@@ -4,11 +4,12 @@ import { ROLES } from './analyze.js';
 const plain = t => (t || '').replace(/<[^>]+>/g, '').replace(/\[\[([^\]]+)\]\]/g, '$1').replace(/\s+/g, ' ').trim();
 const SPICE = ['Proven: strong, well-known cards are welcome.', 'Mixed: some well-known cards, but look for fresh angles.', 'Off the beaten path: avoid the usual staples; find unusual synergies and cards people rarely play, especially combos between older and newer cards.'];
 
-export function buildBrief({ db, builder, campaign, scenario, findings, details, spice }) {
+export function buildBrief({ db, builder, campaign, scenario, findings, details, spice, limit = 0, textLen = 170 }) {
   const inv = builder.inv;
   const icons = c => ['w', 'i', 'c', 'a', 'x'].filter(k => c[k]).map(k => `${c[k]}${k.toUpperCase()}`).join(' ');
-  const cards = [...builder.pool].sort((a, b) => a.card.type.localeCompare(b.card.type) || a.card.name.localeCompare(b.card.name)).map(({ card, max }) =>
-    `- ${card.name} | ${card.type}${card.cost !== undefined ? `, cost ${card.cost === -2 ? 'X' : card.cost}` : ''} | ${card.fac}${card.slot ? ` | ${card.slot}` : ''} | ${card.traits || ''} | icons ${icons(card) || 'none'} | max ${max} | ${plain(card.text).slice(0, 170)}`);
+  const source = limit ? builder.ranked().slice(0, limit).map(p => ({ card: p.card, max: p.max })) : [...builder.pool];
+  const cards = source.sort((a, b) => a.card.type.localeCompare(b.card.type) || a.card.name.localeCompare(b.card.name)).map(({ card, max }) =>
+    `- ${card.name} | ${card.type}${card.cost !== undefined ? `, cost ${card.cost === -2 ? 'X' : card.cost}` : ''} | ${card.fac}${card.slot ? ` | ${card.slot}` : ''} | ${card.traits || ''} | icons ${icons(card) || 'none'} | max ${max} | ${plain(card.text).slice(0, textLen)}`);
   const req = builder.required.map(c => `${c.name}${c.subtype ? ' (weakness)' : ''}: ${plain(c.text).slice(0, 200)}`);
   return [
     'ARKHAM DECK HELPER: BRIEF FOR CLAUDE',
@@ -34,7 +35,7 @@ export function buildBrief({ db, builder, campaign, scenario, findings, details,
     '',
     `STYLE: ${SPICE[spice]}`,
     '',
-    `OWNED, LEGAL LEVEL 0 CARDS (${cards.length}): name | type, cost | class | slot | traits | icons | max copies | text`,
+    `OWNED, LEGAL LEVEL 0 CARDS (${cards.length}${limit ? `, the best-suited of ${builder.pool.length}` : ''}): name | type, cost | class | slot | traits | icons | max copies | text`,
     ...cards,
   ].filter(l => l !== null).join('\n');
 }
