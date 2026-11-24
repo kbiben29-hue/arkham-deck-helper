@@ -47,7 +47,7 @@ export function initChaos(camps, bags, ui) {
   const save = () => { const { history, last, ...keep } = S; store.set('bag2', JSON.stringify(keep)); };
 
   const bagBy = Object.fromEntries(bags.map(b => [b.id, b]));
-  const norm = n => (n || '').toLowerCase().replace(/^return to /, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  const norm = n => (n || '').toLowerCase().replace(/^return to /, '').replace(/,? part [ivx]+$/, '').replace(/[^a-z0-9]+/g, ' ').trim();
   const effectsByName = new Map();
   for (const c of camps.campaigns) for (const sc of c.scenarios) if (sc.profile.tokenText && !effectsByName.has(norm(sc.name))) effectsByName.set(norm(sc.name), sc.profile.tokenText);
 
@@ -81,7 +81,38 @@ export function initChaos(camps, bags, ui) {
     const hard = S.diff === 'hard' || S.diff === 'expert';
     return (hard ? tt.hard : tt.standard) || tt.standard;
   }
+  // Structured values (from the Arkham Cards data) for the current scenario and difficulty.
+  S.inputs ||= {};
+  function structured() {
+    const sc = scen();
+    if (!sc?.tokens) return null;
+    const hard = S.diff === 'hard' || S.diff === 'expert';
+    return (hard ? sc.tokens.hard : sc.tokens.standard) || null;
+  }
+  const inKey = k => `${scen()?.id}|${S.diff === 'hard' || S.diff === 'expert' ? 'h' : 's'}|${k}`;
+  function computeStructured() {
+    const list = structured();
+    if (!list) return false;
+    for (const t of list) {
+      let v;
+      if (t.type === 'counter') {
+        const c = t.counter, x = S.inputs[inKey(t.token)] ?? c.min ?? 0;
+        v = { modifier: (x + (c.adjustment || 0)) * (c.scale || 1) * (t.token === 'elder_sign' ? 1 : -1), reveal_another: c.reveal_another };
+      } else if (t.type === 'condition') {
+        const on = S.inputs[inKey(t.token)] || [];
+        const i = t.condition.options.findIndex((o, j) => on[j]);
+        v = i >= 0 ? t.condition.options[i].modified_value : t.condition.default_value;
+      } else v = t.value;
+      if (!v) continue;
+      if (t.token === 'elder_sign') { S.values.elder_sign = v.modifier ?? S.values.elder_sign; continue; }
+      if (!SYMBOLS.includes(t.token)) continue;
+      S.values[t.token] = v.modifier ?? 0;
+      S.redraw[t.token] = !!v.reveal_another;
+    }
+    return true;
+  }
   function applyScenarioValues() {
+    if (computeStructured()) return;
     const fx = effects();
     if (!fx) return;
     for (const k of SYMBOLS) {
@@ -169,7 +200,22 @@ export function initChaos(camps, bags, ui) {
         <label class="inline">Value <input type="number" inputmode="numeric" data-val="${k}" value="${S.values[k] <= -99 ? '' : S.values[k]}" ${S.values[k] <= -99 ? 'placeholder="fail"' : ''}></label>
         <label class="inline chk"><input type="checkbox" data-redraw="${k}" ${S.redraw[k] ? 'checked' : ''}> Reveal another</label></div>
       ${fx?.[k] ? `<p class="sub fx">${esc(fx[k].replace(/\[\[([^\]]+)\]\]/g, '$1').replace(/\[(\w+)\]/g, (m, w) => LABEL[w] || w))}</p>` : ''}
+      ${ask(k)}
     </div>`;
+    const clean = t => esc((t || '').replace(/\[\[([^\]]+)\]\]/g, '$1').replace(/\[(\w+)\]/g, (m, w) => LABEL[w] || w));
+    function ask(k) {
+      const t = (structured() || []).find(x => x.token === k);
+      if (!t) return '';
+      if (t.type === 'counter') {
+        const c = t.counter, x = S.inputs[inKey(k)] ?? c.min ?? 0;
+        return `<label class="askx">${clean(c.prompt)}<span class="stepper"><button data-xdec="${k}" ${x <= (c.min ?? 0) ? 'disabled' : ''} aria-label="Less">−</button><span>${x}</span><button data-xinc="${k}" ${c.max != null && x >= c.max ? 'disabled' : ''} aria-label="More">+</button></span></label>`;
+      }
+      if (t.type === 'condition') {
+        const on = S.inputs[inKey(k)] || [];
+        return t.condition.options.map((o, j) => `<label class="inline chk askc"><input type="checkbox" data-cond="${k}|${j}" ${on[j] ? 'checked' : ''}> ${clean(o.prompt)}</label>`).join('');
+      }
+      return '';
+    }
     const lastHtml = S.last ? `<div class="drawn">
         <div class="chain">${S.last.chain.map(k => tokenBadge(k, true)).join('<span class="plus">then</span>')}</div>
         <p class="result ${S.last.fail ? 'bad' : ''}">${S.last.fail ? 'Automatic failure' : `Total modifier ${fmt(S.last.mod)}`}</p>
@@ -184,7 +230,7 @@ export function initChaos(camps, bags, ui) {
       ['Standalone scenarios and side stories', bags.filter(b => b.kind === 'side')],
     ];
     const diffs = ['easy', 'standard', 'hard', 'expert'].filter(d => (sc?.standalone && (S.mode === 'standalone' || src.kind === 'side') ? sc.standalone[d] : src.bags[d]));
-    const campScens = src.scenarios.filter(x => src.kind !== 'side');
+    const campScens = src.kind === 'side' ? [] : src.scenarios.filter(x => x.tokens || x.standalone || x.campaignNotes.length || effectsByName.has(norm(x.name)));
     const notes = [
       ...(S.mode === 'standalone' || src.kind === 'side' ? sc?.standaloneNotes || [] : []),
       ...(S.mode === 'campaign' && src.kind !== 'side' ? (sc?.campaignNotes || []).map(n => `During ${sc.name} setup: ${n}`) : []),
@@ -230,7 +276,7 @@ export function initChaos(camps, bags, ui) {
 
       <section class="panel b-step">
         <h2>Symbol tokens</h2>
-        <p class="sub" style="margin:4px 0 10px">${fx ? `Values filled in from ${esc(scen()?.name || '')} (${S.diff === 'hard' || S.diff === 'expert' ? 'Hard / Expert' : 'Easy / Standard'}). Where the card says -X, set X for the current situation.` : 'Pick a scenario above to fill these in from its reference card, or set them yourself.'}</p>
+        <p class="sub" style="margin:4px 0 10px">${fx ? `${structured() ? 'Values worked out for' : 'Values filled in from'} ${esc(scen()?.name || '')} (${S.diff === 'hard' || S.diff === 'expert' ? 'Hard / Expert' : 'Easy / Standard'}). ${structured() ? 'Answer the questions under each token and the value updates.' : 'Where the card says -X, set X for the current situation.'}` : 'Pick a scenario above to fill these in from its reference card, or set them yourself.'}</p>
         <div class="sym-grid">${SYMBOLS.map(symRow).join('')}
           <div class="sym-row"><div class="sym-head">${tokenBadge('elder_sign')}<b>Elder Sign</b><label class="inline">Value <input type="number" inputmode="numeric" data-val="elder_sign" value="${S.values.elder_sign}"></label></div><p class="sub fx">Set this to your investigator's Elder Sign bonus.</p></div>
           <div class="sym-row"><div class="sym-head">${tokenBadge('frost')}<b>Frost</b><label class="inline">Value <input type="number" inputmode="numeric" data-val="frost" value="${S.values.frost}"></label></div><p class="sub fx">Only used in some campaigns. Set it as your rules say.</p></div>
@@ -244,6 +290,12 @@ export function initChaos(camps, bags, ui) {
     if (d.inc) editBag(x => { x[d.inc] = (x[d.inc] || 0) + 1; });
     else if (d.dec) editBag(x => { x[d.dec] = Math.max(0, (x[d.dec] || 0) - 1); });
     else if (d.act === 'draw') draw();
+    else if (d.xinc || d.xdec) {
+      const k = d.xinc || d.xdec, t = (structured() || []).find(x => x.token === k);
+      const cur = S.inputs[inKey(k)] ?? t?.counter.min ?? 0;
+      S.inputs[inKey(k)] = Math.max(t?.counter.min ?? 0, cur + (d.xinc ? 1 : -1));
+      computeStructured();
+    }
     else if (d.act === 'reset-bag') delete S.custom[key()];
     else if (d.mode) { S.mode = d.mode; if (S.mode === 'standalone' && !S.scenario) S.scenario = source().scenarios.find(x => x.standalone)?.id || source().scenarios[0]?.id || ''; applyScenarioValues(); }
     else if (d.diff) { S.diff = d.diff; applyScenarioValues(); }
@@ -256,6 +308,7 @@ export function initChaos(camps, bags, ui) {
     else if (d.scen !== undefined) { S.scenario = t.value; applyScenarioValues(); }
     else if (d.val) { S.values[d.val] = t.value === '' ? 0 : +t.value; }
     else if (d.redraw) { S.redraw[d.redraw] = t.checked; }
+    else if (d.cond) { const [k, j] = d.cond.split('|'); const arr = [...(S.inputs[inKey(k)] || [])]; arr[+j] = t.checked; S.inputs[inKey(k)] = arr; computeStructured(); }
     else if (d.skill !== undefined) S.skill = +t.value;
     else if (d.tdiff !== undefined) S.difficulty = +t.value;
     else return;

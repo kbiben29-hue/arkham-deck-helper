@@ -88,6 +88,28 @@ for (const dir of fs.existsSync(retDir) ? fs.readdirSync(retDir).sort() : []) {
   const scenarios = files.map(f => scenarioBags(path.join(retDir, dir, f))).filter(Boolean);
   out.push({ id: dir, name: clean(camp.name), kind: 'return', bags: orig.bags, scenarios: scenarios.length ? scenarios : orig.scenarios });
 }
+// Structured symbol-token values per scenario (chaos_tokens.json), matched by scenario id or by
+// the scenario reference card's name from arkhamdb-json-data (third argument, optional).
+const tokFile = path.join(src, 'chaos_tokens.json');
+if (fs.existsSync(tokFile)) {
+  const toks = read(tokFile);
+  const byId = Object.fromEntries(toks.map(t => [t.scenario, t]));
+  const nameOf = {};
+  const adb = process.argv[3];
+  if (adb) for (const dir of fs.readdirSync(path.join(adb, 'pack'))) for (const f of fs.readdirSync(path.join(adb, 'pack', dir))) {
+    if (!f.endsWith('.json')) continue;
+    for (const c of read(path.join(adb, 'pack', dir, f))) if (c.type_code === 'scenario') nameOf[c.code] = c.name;
+  }
+  const n = x => (x || '').toLowerCase().replace(/^return to /, '').replace(/,? part [ivx]+$/, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  const byName = {};
+  for (const t of toks) if (nameOf[t.code]) byName[n(nameOf[t.code])] = t;
+  let hits = 0;
+  for (const c of out) for (const sc of c.scenarios) {
+    const t = byId[sc.id] || byName[n(sc.name)];
+    if (t) { sc.tokens = { standard: t.standard || [], hard: t.hard || t.standard || [] }; hits++; }
+  }
+  console.log(`Token values matched for ${hits} scenarios`);
+}
 fs.writeFileSync('data/bags.json', JSON.stringify(out));
 console.log(`Wrote ${out.length} campaigns/standalones, ${out.reduce((s, c) => s + c.scenarios.filter(x => x.standalone).length, 0)} with standalone bags`);
 for (const c of out) console.log(c.kind.padEnd(8), c.name.padEnd(42), Object.keys(c.bags).join('/').padEnd(26), c.scenarios.length, 'scen,', c.scenarios.filter(s => s.standalone).length, 'standalone');

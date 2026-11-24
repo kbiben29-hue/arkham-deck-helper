@@ -323,3 +323,5 @@ details.orig summary { cursor: pointer; color: var(--muted); font-size: 14px; pa
 .inline.chk input { width: 20px; height: 20px; accent-color: var(--accent); }
 .fx { margin: 8px 0 0; }
 .bag-notes { margin: 8px 0 0; padding-left: 20px; font-size: 14.5px; display: grid; gap: 3px; }
+.askx { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; font-size: 14.5px; font-weight: 600; }
+.askc { margin-top: 8px; display: flex; align-items: flex-start; }
