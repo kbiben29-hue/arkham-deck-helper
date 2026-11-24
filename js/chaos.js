@@ -17,6 +17,30 @@ const GLYPH = {
   curse: '<path d="M21.5 5.5A11 11 0 1 0 26.5 22 9 9 0 1 1 21.5 5.5z"/><path d="M12 25.5c0 1.6-1 2.8-1 2.8s-1-1.2-1-2.8a1 1 0 0 1 2 0z"/>',
   frost: '<g stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"><path d="M16 3.5v25M5.2 9.8l21.6 12.4M5.2 22.2l21.6-12.4"/><path d="M12.8 5.8L16 8.6l3.2-2.8M12.8 26.2L16 23.4l3.2 2.8M5.4 14.3l3.9-.9-1.3-3.9M26.6 17.7l-3.9.9 1.3 3.9M8 22.4l1.3-3.9-3.9-.9M24 9.6l-1.3 3.9 3.9.9"/></g>',
 };
+// Token images as hosted on Steam's CDN by the SCED Tabletop Simulator mod (github.com/argonui/SCED).
+// Loaded straight from there, like the card images from ArkhamDB; nothing is copied into this repo.
+const STEAM = 'https://steamusercontent-a.akamaihd.net/ugc/';
+const TOKEN_IMG = {
+  '+1': '10065518989680601262/55C6E20197F82A335B9B949CC01FCF6E9DC9B2B6/',
+  '0': '10467636488768711896/65D31C09954BC6DD95A3EDB44AFF7B5CAC5DDFBC/',
+  '-1': '18141677772083355157/B6921FE2FF0BAD3A29117FFF917F1B214A0A1737/',
+  '-2': '16300603643773411041/2639335E189779A56EBB1DBD5770B879A72549C5/',
+  '-3': '12389435929210412458/FBA601FAAD79D9B70E4EB3E6F45A08E86DE1C09A/',
+  '-4': '11693498521773237474/7ECFB6071A5FC5D9B2530631C1C9BB913450AD69/',
+  '-5': '16829517245644419133/55CF59E1295D6CE0A2AAF69784BCE164D1D0F807/',
+  '-6': '16991160142031023290/288C4B755FC36B49C0FC5E5DB5929D9720932601/',
+  '-7': '18160465441183960058/EBE2A6876F2190F52BE318830A6A145AC6108D14/',
+  '-8': '17945201728310792736/3B17446B285B165E095F899C97CAB0DBD9D22C4A/',
+  skull: '15828862155539708736/BDAB049A331E3528626DA3B7CBA621F1846E472E/',
+  cultist: '10819121326050938896/43990FCC095A8AE2C3398C7D67A6C068DA6A6749/',
+  tablet: '17952552005967267216/05C897C573865E2513D8B08CD68D5ED5CC7E689C/',
+  elder_thing: '12269151051478770224/9D3E87A4406D441F8BACEAAE05A4215D57D4A36C/',
+  auto_fail: '15030955895089669191/BC72E714C4DF998F1D0F5ED56AF267EBF949C215/',
+  elder_sign: '14299675228001607884/DC8691C239014FE7DDABB886BB1D383C05DC490F/',
+  bless: '17626656568141106343/AF58317B4B90FDBB2859D667717956A24F838F9E/',
+  curse: '16368291675628055072/CA7EF7D227D3BD3001A52D6D1EC40F631752270C/',
+  frost: '17407496234279022797/27E998B2DCB82BF6F2B544FF7C1A831048BE68F8/',
+};
 const SHORT = { skull: 'Sk', cultist: 'Cu', tablet: 'Ta', elder_thing: 'ET', auto_fail: '✕', elder_sign: '★', bless: 'B', curse: 'C', frost: 'Fr' };
 
 // Read a symbol's effect text: "-2. If you fail…" → { value: -2 }, "-X. X is…" → X, "Reveal another token…" → redraw.
@@ -181,7 +205,8 @@ export function initChaos(camps, bags, ui) {
   const tokenBadge = (k, big = false) => {
     const sym = !NUMS.includes(k);
     const inner = sym ? `<svg viewBox="0 0 32 32" aria-hidden="true" fill="currentColor">${GLYPH[k]}</svg>` : `<b>${k.replace('-', '−')}</b>`;
-    return `<span class="tok ${sym ? `tok-${k}` : 'tok-num'} ${big ? 'big' : ''}" role="img" aria-label="${esc(LABEL[k] || k)}" title="${esc(LABEL[k] || k)}">${inner}</span>`;
+    const img = TOKEN_IMG[k] ? `<img class="tok-img" src="${STEAM}${TOKEN_IMG[k]}" alt="" loading="lazy" decoding="async" onload="this.parentNode.classList.add('img-ok')" onerror="this.remove()">` : '';
+    return `<span class="tok ${sym ? `tok-${k}` : 'tok-num'} ${big ? 'big' : ''}" role="img" aria-label="${esc(LABEL[k] || k)}" title="${esc(LABEL[k] || k)}">${inner}${img}</span>`;
   };
   const fmt = n => n > 0 ? `+${n}` : String(n);
   const pctTxt = x => `${Math.round(x * 100)}%`;
