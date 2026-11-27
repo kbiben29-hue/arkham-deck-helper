@@ -190,7 +190,7 @@ export function initBuilder(db, camps, ui) {
     return `<div class="seg" role="group" aria-label="Start from"><button data-who="inv" aria-pressed="${S.who === 'inv'}">An investigator</button><button data-who="role" aria-pressed="${S.who === 'role'}">A role</button></div>
       <div class="who">${pick}
         <div class="who-row">
-          <label>Players<select data-players>${[1, 2, 3, 4].map(n => `<option value="${n}" ${S.players === n ? 'selected' : ''}>${n === 1 ? '1 (solo)' : n}</option>`).join('')}</select></label>
+          ${(S.who === 'role' ? S.role : S.irole) === 'solo' ? `<label>Players<select disabled><option>1 (true solo)</option></select></label>` : `<label>Players<select data-players>${[1, 2, 3, 4].map(n => `<option value="${n}" ${S.players === n ? 'selected' : ''}>${n === 1 ? '1 (solo)' : n}</option>`).join('')}</select></label>`}
           ${S.who === 'inv' && inv ? `<label>Role<select data-irole><option value="auto">Auto (${ROLES[autoRole(inv)]})</option>${Object.entries(ROLES).map(([k, v]) => `<option value="${k}" ${S.irole === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>` : ''}
           ${choiceHtml}
         </div></div>`;
@@ -468,7 +468,7 @@ export function initBuilder(db, camps, ui) {
     else if (t.dataset.scenario !== undefined) { S.scenario = t.value; resetBuild(); }
     else if (t.dataset.inv !== undefined) { S.invCode = t.value; S.choices = {}; resetBuild(); }
     else if (t.dataset.players !== undefined) { S.players = +t.value; resetBuild(); }
-    else if (t.dataset.irole !== undefined) { S.irole = t.value === 'auto' ? '' : t.value; resetBuild(); }
+    else if (t.dataset.irole !== undefined) { S.irole = t.value === 'auto' ? '' : t.value; if (t.value === 'solo') S.players = 1; resetBuild(); }
     else if (t.dataset.choice) { S.choices[t.dataset.choice] = t.value; resetBuild(); }
     else return;
     save(); render();
@@ -482,7 +482,7 @@ export function initBuilder(db, camps, ui) {
     S.msg = '';
     if (d.all) { const codes = d.all.split(','); const allOn = codes.every(c => S.owned[c]); codes.forEach(c => { if (allOn) delete S.owned[c]; else S.owned[c] = S.owned[c] || 1; }); }
     else if (d.who) { S.who = d.who; resetBuild(); }
-    else if (d.role) { S.role = d.role; S.invCode = ''; resetBuild(); }
+    else if (d.role) { S.role = d.role; S.invCode = ''; if (d.role === 'solo') S.players = 1; resetBuild(); }
     else if (d.pick) { S.invCode = d.pick; S.choices = {}; resetBuild(); }
     else if (d.spice) { S.spice = +d.spice; resetBuild(); }
     else if (d.scen !== undefined) { S.scenario = d.scen; resetBuild(); }

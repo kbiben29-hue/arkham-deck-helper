@@ -12,6 +12,7 @@ export const ROLES = {
   clues: 'Clue finder',
   fighter: 'Enemy handler',
   flex: 'Flex',
+  solo: 'True solo',
 };
 
 const plain = t => (t || '').replace(/<[^>]+>/g, '').toLowerCase();
@@ -183,7 +184,7 @@ export function analyze(deck, { role = 'auto', players = 2 } = {}) {
     else if ((inv.c || 0) >= (inv.i || 0) + 1 || inv.fac === 'guardian') autoRole = 'fighter';
   }
   const useRole = role === 'auto' ? autoRole : role;
-  const solo = players === 1;
+  const solo = players === 1 || useRole === 'solo';
 
   // Count cards per role
   const tally = {};
@@ -210,7 +211,7 @@ export function analyze(deck, { role = 'auto', players = 2 } = {}) {
   {
     const t = get('clue');
     const primary = useRole === 'clues' || solo;
-    const need = useRole === 'clues' ? [9, 6, 3] : useRole === 'flex' || solo ? [6, 4, 2] : [3, 1, 1];
+    const need = useRole === 'solo' ? [8, 6, 3] : useRole === 'clues' ? [9, 6, 3] : useRole === 'flex' || solo ? [6, 4, 2] : [3, 1, 1];
     if (stat('i') >= 5) need.forEach((v, i) => need[i] = Math.max(1, v - 1));
     let g = grade(t.count, ...need);
     if (!primary && useRole === 'fighter' && g === 'missing') g = 'ok';
@@ -227,7 +228,7 @@ export function analyze(deck, { role = 'auto', players = 2 } = {}) {
     const t = merge('fight', 'evade');
     const f = get('fight').count;
     const primary = useRole === 'fighter' || solo;
-    const need = useRole === 'fighter' ? [9, 6, 3] : solo || useRole === 'flex' ? [6, 4, 2] : [4, 2, 1];
+    const need = useRole === 'solo' ? [8, 6, 3] : useRole === 'fighter' ? [9, 6, 3] : solo || useRole === 'flex' ? [6, 4, 2] : [4, 2, 1];
     if (stat('c') >= 5 && useRole === 'fighter') need.forEach((v, i) => need[i] = Math.max(1, v - 1));
     const g = grade(t.count, ...need);
     const notes = {
@@ -362,5 +363,5 @@ export function analyze(deck, { role = 'auto', players = 2 } = {}) {
   const headline = legality.some(l => l.level === 'error') ? 'Fix the deck rules first'
     : score >= 0.8 ? 'Ready for the Mythos' : score >= 0.6 ? 'Solid, with a weak spot or two' : score >= 0.4 ? 'Playable, but it has real gaps' : 'This deck needs work';
 
-  return { inv, role: useRole, autoRole, players, deckSize, sizeReq: allowedSizes.join('/'), drawSize, pillars, skills, curve, xCost, avgCost, slots, legality, xp, fixFirst, score, headline, entries: playable };
+  return { inv, role: useRole, autoRole, players: useRole === 'solo' ? 1 : players, deckSize, sizeReq: allowedSizes.join('/'), drawSize, pillars, skills, curve, xCost, avgCost, slots, legality, xp, fixFirst, score, headline, entries: playable };
 }

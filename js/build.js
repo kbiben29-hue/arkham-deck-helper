@@ -98,6 +98,13 @@ export function roleFit(inv, role) {
   const s = k => inv[k] || 0;
   if (role === 'clues') return s('i') * 2 + (inv.fac === 'seeker' ? 2 : 0) + s('w') * 0.3;
   if (role === 'fighter') return s('c') * 2 + (inv.fac === 'guardian' ? 2 : 0) + (inv.health || 0) * 0.2;
+  if (role === 'solo') {
+    // One investigator has to find clues, handle enemies and survive treacheries alone:
+    // reward balanced stats, toughness and access to more than one class.
+    const classes = new Set((inv.options || []).flatMap(o => o.faction || o.faction_select || []).filter(f => f !== 'neutral')).size;
+    return Math.min(s('i'), s('c')) * 2.2 + (s('i') + s('c')) * 0.5 + s('a') * 0.5 + s('w') * 0.6
+      + ((inv.health || 0) + (inv.sanity || 0)) * 0.15 + Math.min(classes, 3) * 0.6;
+  }
   return Math.min(s('i'), s('c')) * 2 + (s('i') + s('c') + s('a')) * 0.4 + (['rogue', 'survivor'].includes(inv.fac) ? 1 : 0);
 }
 export function autoRole(inv) {
@@ -130,6 +137,7 @@ export function targetsFor(role, players, size, inv) {
     clues: { clue: 9, enemy: solo ? 6 : 3, econ: 5, draw: 4, protect: 3, alive: 3 },
     fighter: { clue: solo ? 6 : 2, enemy: 9, econ: 5, draw: 4, protect: 3, alive: 3 },
     flex: { clue: 6, enemy: 6, econ: 5, draw: 4, protect: 3, alive: 3 },
+    solo: { clue: 8, enemy: 8, econ: 5, draw: 4, protect: 3, alive: 4 },
   }[role];
   if ((inv.w || 0) >= 4) base.protect = 1;
   if ((inv.w || 0) <= 2) base.protect = 5;
@@ -253,6 +261,7 @@ export class Builder {
     this.db = db; this.inv = inv; this.players = players; this.choices = choices;
     this.pr = pr; this.playingName = playingName; this.engine = engine; this.spice = spice;
     this.role = role === 'auto' || !role ? autoRole(inv) : role;
+    if (this.role === 'solo') this.players = players = 1;
     this.size = deckSizeFor(inv, choices);
     this.targets = adjustTargets(targetsFor(this.role, players, this.size, inv), pr);
     this.synergy = invTraits(inv);
